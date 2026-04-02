@@ -1,0 +1,348 @@
+adapter_id: external-hotel-rent-mongo
+source_type: mongo
+owner: platform-migration
+vertical_pack: hotel
+connection_profile_key: replace-with-secret-reference
+entities:
+  - source_entity: hotel_settings
+    canonical_entity: hotel.property_profile_doc
+    source_identity_field: name
+    dedupe_keys:
+      - tenant_id
+      - property_code
+    field_mappings:
+      - source: name
+        target: brand_name
+      - source: shortDescription
+        target: short_description
+      - source: address
+        target: address_line_1
+      - source: city
+        target: city
+      - source: country
+        target: country
+      - source: contactNumber
+        target: contact_phone
+      - source: email
+        target: contact_email
+      - source: checkInTime
+        target: check_in_time
+      - source: checkOutTime
+        target: check_out_time
+      - source: starRating
+        target: star_rating
+  - source_entity: amenity_categories
+    canonical_entity: hotel.amenity_category
+    source_identity_field: _id
+    dedupe_keys:
+      - tenant_id
+      - source_id
+  - source_entity: amenities
+    canonical_entity: hotel.amenity_catalog_doc
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - source_id
+  - source_entity: room_types
+    canonical_entity: hotel.room_type
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - code
+    field_mappings:
+      - source: roomName
+        target: name
+      - source: slug
+        target: slug
+      - source: roomCategory
+        target: category
+      - source: bedType
+        target: bed_type
+      - source: maxOccupancy
+        target: occupancy
+      - source: roomSize
+        target: room_size
+      - source: basePrice
+        target: base_rate_minor
+      - source: extraBedPrice
+        target: extra_bed_price_minor
+      - source: currency
+        target: currency
+      - source: amenityIds
+        target: amenity_ids
+      - source: images
+        target: gallery_urls
+  - source_entity: rooms
+    canonical_entity: hotel.room
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - room_number
+    field_mappings:
+      - source: roomNumber
+        target: room_number
+      - source: roomTypeId
+        target: room_type_id
+      - source: floor
+        target: floor_label
+      - source: isActive
+        target: is_active
+      - source: features
+        target: feature_tags
+      - source: lastCleaned
+        target: last_cleaned_at
+  - source_entity: meal_plans
+    canonical_entity: hotel.meal_plan
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - code
+    field_mappings:
+      - source: code
+        target: code
+      - source: name
+        target: name
+      - source: description
+        target: description
+      - source: pricePerPersonPerNight
+        target: price_per_person_per_night_minor
+      - source: includedMeals
+        target: included_meals
+      - source: active
+        target: is_active
+  - source_entity: customers
+    canonical_entity: hotel.guest_profile
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - email
+    field_mappings:
+      - source: firstName
+        target: first_name
+      - source: lastName
+        target: last_name
+      - source: email
+        target: email
+      - source: phone
+        target: phone
+      - source: nationality
+        target: nationality
+      - source: loyaltyTier
+        target: loyalty_tier
+      - source: vip
+        target: vip
+      - source: preferredRoom
+        target: preferred_room_type_name
+      - source: dietaryPref
+        target: dietary_preference
+      - source: company
+        target: company_name
+      - source: notes
+        target: notes
+  - source_entity: bookings
+    canonical_entity: hotel.reservation
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - bookingRef
+    field_mappings:
+      - source: bookingRef
+        target: booking_reference
+      - source: customerId
+        target: guest_customer_id
+      - source: roomTypeId
+        target: room_type_id
+      - source: roomNumber
+        target: assigned_room_number
+      - source: checkIn
+        target: check_in_date
+      - source: checkOut
+        target: check_out_date
+      - source: nights
+        target: nights
+      - source: adults
+        target: adults
+      - source: children
+        target: children
+      - source: mealPlanId
+        target: meal_plan_id
+      - source: grandTotal
+        target: total_amount_minor
+      - source: currency
+        target: currency
+      - source: bookingSource
+        target: booking_source
+      - source: specialRequests
+        target: special_requests
+      - source: earlyCheckIn
+        target: early_check_in
+      - source: lateCheckOut
+        target: late_check_out
+      - source: checkInActual
+        target: actual_check_in_at
+      - source: checkOutActual
+        target: actual_check_out_at
+  - source_entity: housekeeping
+    canonical_entity: hotel.housekeeping_task
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - source_id
+    field_mappings:
+      - source: roomNumber
+        target: room_number
+      - source: roomTypeId
+        target: room_type_id
+      - source: floor
+        target: floor_label
+      - source: status
+        target: housekeeping_status
+      - source: priority
+        target: priority
+      - source: assignedTo
+        target: assigned_staff_name
+      - source: lastCleaned
+        target: last_cleaned_at
+      - source: notes
+        target: notes
+  - source_entity: maintenance
+    canonical_entity: hotel.maintenance_ticket
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - source_id
+    field_mappings:
+      - source: roomNumber
+        target: room_number
+      - source: issue
+        target: title
+      - source: category
+        target: category
+      - source: priority
+        target: priority
+      - source: status
+        target: status
+      - source: reportedBy
+        target: reported_by
+      - source: assignedTo
+        target: assigned_staff_name
+      - source: reportedAt
+        target: reported_at
+      - source: resolvedAt
+        target: resolved_at
+      - source: estimatedCost
+        target: estimated_cost_minor
+  - source_entity: pricing_rules
+    canonical_entity: hotel.rate_rule
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - source_id
+    field_mappings:
+      - source: roomTypeId
+        target: room_type_id
+      - source: type
+        target: rule_type
+      - source: label
+        target: label
+      - source: threshold
+        target: threshold_value
+      - source: unit
+        target: threshold_unit
+      - source: discount
+        target: adjustment_percent
+      - source: enabled
+        target: is_enabled
+  - source_entity: staff
+    canonical_entity: hotel.staff_member
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - employeeId
+    field_mappings:
+      - source: employeeId
+        target: employee_code
+      - source: firstName
+        target: first_name
+      - source: lastName
+        target: last_name
+      - source: role
+        target: role
+      - source: department
+        target: department
+      - source: shift
+        target: shift_name
+      - source: phone
+        target: phone
+      - source: email
+        target: email
+      - source: emergencyContact
+        target: emergency_contact
+      - source: joinDate
+        target: joined_on
+      - source: status
+        target: employment_status
+      - source: todayAttendance
+        target: attendance_state
+      - source: notes
+        target: notes
+  - source_entity: pricing
+    canonical_entity: hotel.rate_plan
+    source_identity_field: roomId
+    dedupe_keys:
+      - tenant_id
+      - room_type_id
+    field_mappings:
+      - source: roomId
+        target: room_type_id
+      - source: currency
+        target: currency
+      - source: weekendPricingEnabled
+        target: weekend_enabled
+      - source: weekendPrice
+        target: weekend_rate_minor
+      - source: seasonalPricing
+        target: seasonal_overrides
+    notes:
+      - source field `roomId` maps to room type ids in the provided seed
+  - source_entity: availability
+    canonical_entity: hotel.availability_rule
+    source_identity_field: roomId
+    dedupe_keys:
+      - tenant_id
+      - room_type_id
+    field_mappings:
+      - source: roomId
+        target: room_type_id
+      - source: totalRooms
+        target: total_units
+      - source: availableRooms
+        target: available_units_snapshot
+      - source: minimumStay
+        target: minimum_stay_nights
+      - source: maximumStay
+        target: maximum_stay_nights
+      - source: blackoutDates
+        target: blackout_dates
+    notes:
+      - source field `roomId` maps to room type ids in the provided seed
+  - source_entity: nearby
+    canonical_entity: publishing.nearby_place_doc
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - source_id
+    field_mappings:
+      - source: name
+        target: title
+      - source: description
+        target: summary
+      - source: distance
+        target: distance_label
+      - source: image
+        target: image_url
+      - source: createdAt
+        target: created_at
+mode: one_way_import
+supports_dry_run: true
+supports_idempotency: true

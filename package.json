@@ -1,0 +1,24 @@
+{
+  "name": "kalpzero-enterprise",
+  "private": true,
+  "packageManager": "pnpm@10.5.2",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "dev:api:infra": "cd apps/api && ./.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload",
+    "dev:api:local": "cd apps/api && KALPZERO_ENV=development KALPZERO_JWT_SECRET=12345678901234567890123456789012 KALPZERO_ENCRYPTION_KEY=abcdefghijklmnopqrstuvwxyz123456 KALPZERO_CONTROL_DATABASE_URL=sqlite:///./dev.db KALPZERO_RUNTIME_MONGO_URL=mongodb://localhost:27017 KALPZERO_RUNTIME_DOC_STORE_MODE=memory KALPZERO_OPS_REDIS_URL=redis://localhost:6379/0 KALPZERO_PUBLIC_WEB_URL=http://127.0.0.1:3000 KALPZERO_PUBLIC_API_URL=http://127.0.0.1:8010 ./.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010",
+    "dev:web": "pnpm --filter @kalpzero/web dev",
+    "dev:worker": "pnpm --filter @kalpzero/worker dev",
+    "super-admin:start": "./scripts/run-super-admin.sh",
+    "doctor:local": "./scripts/local-doctor.sh",
+    "lint": "turbo run lint",
+    "test": "pnpm test:api && turbo run test",
+    "test:api": "cd apps/api && ./.venv/bin/pytest",
+    "test:smoke": "cd apps/api && ./.venv/bin/pytest app/tests/test_api.py app/tests/test_commerce.py",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.0",
+    "typescript": "^5.8.3"
+  }
+}

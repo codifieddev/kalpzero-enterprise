@@ -1,0 +1,64 @@
+adapter_id: legacy-kalpzero-commerce
+source_root: /Users/apple/Desktop/WORK/GIT/kalpzero
+mode: one_way_import
+entities:
+  - source_entity: product_categories
+    source_path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/api/categories
+    canonical_entity: commerce.category
+    dedupe_keys:
+      - tenant_slug
+      - slug
+    field_mappings:
+      - source: name
+        target: name
+      - source: slug
+        target: slug
+      - source: parentCategoryId
+        target: parent_category_id
+  - source_entity: products
+    source_path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/api/products
+    canonical_entity: commerce.product
+    dedupe_keys:
+      - tenant_slug
+      - slug
+    field_mappings:
+      - source: name
+        target: name
+      - source: slug
+        target: slug
+      - source: description
+        target: description
+      - source: categoryIds
+        target: category_ids
+      - source: seo.title
+        target: seo_title
+      - source: seo.description
+        target: seo_description
+  - source_entity: variants
+    source_path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/api/products
+    canonical_entity: commerce.variant
+    dedupe_keys:
+      - tenant_slug
+      - sku
+    field_mappings:
+      - source: sku
+        target: sku
+      - source: label
+        target: label
+      - source: price
+        target: price_minor
+      - source: stock
+        target: inventory_quantity
+  - source_entity: orders
+    source_path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/api/orders
+    canonical_entity: commerce.order
+    dedupe_keys:
+      - tenant_slug
+      - id
+    field_mappings:
+      - source: customerId
+        target: customer_id
+      - source: status
+        target: status
+      - source: total
+        target: total_minor

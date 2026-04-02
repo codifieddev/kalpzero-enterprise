@@ -1,0 +1,180 @@
+from typing import Callable
+
+from fastapi import Depends, HTTPException, status
+
+from app.core.security import SessionContext, get_current_session
+
+PERMISSION_REGISTRY: dict[str, str] = {
+    "platform.agencies.manage": "Create and inspect agencies in the control plane.",
+    "platform.tenants.manage": "Create and inspect tenants in the control plane.",
+    "platform.registry.read": "Read registry snapshots and feature entitlements.",
+    "platform.audit.read": "Read audit trails for the current tenant scope.",
+    "platform.outbox.read": "Read outbox events for the current tenant scope.",
+    "imports.sources.manage": "Register import sources for the current tenant.",
+    "imports.sources.read": "Inspect import sources for the current tenant.",
+    "imports.jobs.manage": "Create import jobs for the current tenant.",
+    "imports.jobs.read": "Inspect import jobs and reports.",
+    "commerce.catalog.read": "Read commerce catalog and order summary.",
+    "commerce.catalog.manage": "Create and update categories, products, and variants.",
+    "commerce.inventory.read": "Read commerce warehouses, stock levels, and stock ledger state.",
+    "commerce.inventory.manage": "Create warehouses and adjust stock levels.",
+    "commerce.pricing.read": "Read commerce pricing masters, tax profiles, and coupons.",
+    "commerce.pricing.manage": "Create and update commerce pricing masters, tax profiles, and coupons.",
+    "commerce.finance.read": "Read commerce payments, refunds, invoices, and finance state.",
+    "commerce.finance.manage": "Create and transition commerce payments, refunds, and invoices.",
+    "commerce.orders.read": "Read commerce orders and operational order state.",
+    "commerce.orders.manage": "Create and transition commerce orders.",
+    "commerce.fulfillment.read": "Read commerce fulfillment and shipment operations.",
+    "commerce.fulfillment.manage": "Create and transition commerce fulfillments and shipments.",
+    "travel.packages.read": "Read travel packages and departures.",
+    "travel.packages.manage": "Create and update travel packages and departures.",
+    "travel.leads.read": "Read travel lead and quote pipeline state.",
+    "travel.leads.manage": "Create and update travel leads and qualification state.",
+    "hotel.properties.read": "Read hotel properties and room-type structure.",
+    "hotel.properties.manage": "Create and modify hotel property structure.",
+    "hotel.rooms.read": "Read hotel rooms and inventory summaries.",
+    "hotel.rooms.manage": "Create and modify hotel rooms and room types.",
+    "hotel.reservations.read": "Read hotel properties, rooms, and reservations.",
+    "hotel.reservations.manage": "Create and transition hotel reservations.",
+    "hotel.finance.read": "Read hotel folios, charges, payments, and invoice state.",
+    "hotel.finance.manage": "Create and transition hotel folios, charges, and payments.",
+    "hotel.staff.read": "Read hotel staff members and shift schedules.",
+    "hotel.staff.manage": "Create and manage hotel staff members and shift schedules.",
+    "hotel.operations.read": "Read housekeeping and maintenance operational state.",
+    "hotel.operations.manage": "Create and transition housekeeping and maintenance tasks.",
+    "publishing.blueprints.read": "Read business blueprints and theme rules.",
+    "publishing.blueprints.manage": "Update business blueprints and theme rules.",
+    "publishing.pages.read": "Read publishing and SEO state.",
+    "publishing.pages.manage": "Create and publish runtime pages.",
+    "publishing.discovery.read": "Read discovery and public site materializations.",
+    "publishing.discovery.manage": "Update discovery and public site materializations.",
+    "ai.runtime.read": "Read AI runtime policies and usage.",
+}
+
+ROLE_GRANTS: dict[str, set[str]] = {
+    "platform_admin": set(PERMISSION_REGISTRY.keys()),
+    "tenant_admin": {
+        "platform.registry.read",
+        "platform.audit.read",
+        "platform.outbox.read",
+        "imports.sources.manage",
+        "imports.sources.read",
+        "imports.jobs.manage",
+        "imports.jobs.read",
+        "commerce.catalog.read",
+        "commerce.catalog.manage",
+        "commerce.inventory.read",
+        "commerce.inventory.manage",
+        "commerce.pricing.read",
+        "commerce.pricing.manage",
+        "commerce.finance.read",
+        "commerce.finance.manage",
+        "commerce.orders.read",
+        "commerce.orders.manage",
+        "commerce.fulfillment.read",
+        "commerce.fulfillment.manage",
+        "travel.packages.read",
+        "travel.packages.manage",
+        "travel.leads.read",
+        "travel.leads.manage",
+        "hotel.properties.read",
+        "hotel.properties.manage",
+        "hotel.rooms.read",
+        "hotel.rooms.manage",
+        "hotel.reservations.read",
+        "hotel.reservations.manage",
+        "hotel.finance.read",
+        "hotel.finance.manage",
+        "hotel.staff.read",
+        "hotel.staff.manage",
+        "hotel.operations.read",
+        "hotel.operations.manage",
+        "publishing.blueprints.read",
+        "publishing.blueprints.manage",
+        "publishing.pages.read",
+        "publishing.pages.manage",
+        "publishing.discovery.read",
+        "publishing.discovery.manage",
+        "ai.runtime.read",
+    },
+    "operations_manager": {
+        "hotel.properties.read",
+        "hotel.rooms.read",
+        "commerce.catalog.read",
+        "commerce.inventory.read",
+        "commerce.inventory.manage",
+        "commerce.pricing.read",
+        "commerce.pricing.manage",
+        "commerce.finance.read",
+        "commerce.finance.manage",
+        "commerce.orders.read",
+        "commerce.orders.manage",
+        "commerce.fulfillment.read",
+        "commerce.fulfillment.manage",
+        "travel.packages.read",
+        "travel.packages.manage",
+        "travel.leads.read",
+        "travel.leads.manage",
+        "hotel.reservations.read",
+        "hotel.reservations.manage",
+        "hotel.finance.read",
+        "hotel.finance.manage",
+        "hotel.staff.read",
+        "hotel.staff.manage",
+        "hotel.operations.read",
+        "hotel.operations.manage",
+        "publishing.blueprints.read",
+        "publishing.pages.read",
+        "publishing.discovery.read",
+    },
+    "auditor": {
+        "platform.registry.read",
+        "platform.audit.read",
+        "platform.outbox.read",
+        "imports.jobs.read",
+        "commerce.catalog.read",
+        "commerce.inventory.read",
+        "commerce.pricing.read",
+        "commerce.finance.read",
+        "commerce.orders.read",
+        "commerce.fulfillment.read",
+        "travel.packages.read",
+        "travel.leads.read",
+        "hotel.properties.read",
+        "hotel.rooms.read",
+        "hotel.reservations.read",
+        "hotel.finance.read",
+        "hotel.staff.read",
+        "hotel.operations.read",
+        "publishing.blueprints.read",
+        "publishing.pages.read",
+        "publishing.discovery.read",
+        "ai.runtime.read",
+    },
+}
+
+
+def assert_permission_granted(permission: str, role_keys: list[str]) -> None:
+    if permission not in PERMISSION_REGISTRY:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission definition missing. Access denied by default.",
+        )
+
+    granted_permissions: set[str] = set()
+    for role_key in role_keys:
+        granted_permissions.update(ROLE_GRANTS.get(role_key, set()))
+
+    if permission not in granted_permissions:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permission denied for requested operation.",
+        )
+
+
+def require_permission(permission: str) -> Callable[[SessionContext], SessionContext]:
+    def dependency(session: SessionContext = Depends(get_current_session)) -> SessionContext:
+        assert_permission_granted(permission, session.roles)
+        return session
+
+    return dependency

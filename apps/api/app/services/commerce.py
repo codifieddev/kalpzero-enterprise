@@ -1,0 +1,2825 @@
+from collections import Counter, defaultdict
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import yaml
+from sqlalchemy.orm import Session
+
+from app.repositories import commerce as commerce_repository
+from app.repositories import platform as platform_repository
+from app.services.errors import ConflictError, NotFoundError, ValidationError
+from app.services.platform import get_tenant_or_raise
+
+ATTRIBUTE_VALUE_TYPES = {
+    "text",
+    "long_text",
+    "number",
+    "boolean",
+    "single_select",
+    "multi_select",
+    "color",
+    "date",
+}
+
+ATTRIBUTE_SCOPES = {"product", "variant", "both"}
+ATTRIBUTE_ACTIVE_STATUSES = {"active", "archived"}
+COUPON_DISCOUNT_TYPES = {"fixed", "percent"}
+PAYMENT_RECORD_STATUSES = {"authorized", "captured", "failed"}
+WAREHOUSE_ACTIVE_STATUSES = {"active", "inactive"}
+STOCK_LEDGER_ENTRY_TYPES = {"adjustment", "reservation", "release", "fulfillment", "restock"}
+FULFILLMENT_STATUSES = {"pending_pick", "packed", "shipped", "delivered", "cancelled"}
+SHIPMENT_STATUSES = {"shipped", "delivered", "cancelled"}
+
+
+def _tenant(db: Session, tenant_slug: str):
+    return get_tenant_or_raise(db, tenant_slug=tenant_slug)
+
+
+def _dedupe_strings(values: list[str], *, default: list[str] | None = None) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        value = raw.strip()
+        if not value or value in seen:
+            continue
+        deduped.append(value)
+        seen.add(value)
+    if deduped:
+        return deduped
+    return list(default or [])
+
+
+def _attribute_value_signature(value: object | None) -> object:
+    if isinstance(value, list):
+        return tuple(_attribute_value_signature(item) for item in value)
+    return value
+
+
+def _serialize_category(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "slug": model.slug,
+        "description": model.description,
+        "parent_category_id": model.parent_category_id,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_brand(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "slug": model.slug,
+        "code": model.code,
+        "description": model.description,
+        "status": model.status,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_vendor(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "slug": model.slug,
+        "code": model.code,
+        "description": model.description,
+        "contact_name": model.contact_name,
+        "contact_email": model.contact_email,
+        "contact_phone": model.contact_phone,
+        "status": model.status,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_collection(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "slug": model.slug,
+        "description": model.description,
+        "status": model.status,
+        "sort_order": model.sort_order,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_warehouse(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "slug": model.slug,
+        "code": model.code,
+        "city": model.city,
+        "country": model.country,
+        "status": model.status,
+        "is_default": model.is_default,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_warehouse_stock(model) -> dict[str, object]:
+    available_quantity = model.on_hand_quantity - model.reserved_quantity
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "warehouse_id": model.warehouse_id,
+        "variant_id": model.variant_id,
+        "on_hand_quantity": model.on_hand_quantity,
+        "reserved_quantity": model.reserved_quantity,
+        "available_quantity": available_quantity,
+        "low_stock_threshold": model.low_stock_threshold,
+        "is_below_threshold": available_quantity <= model.low_stock_threshold if model.low_stock_threshold > 0 else False,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_stock_ledger_entry(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "warehouse_id": model.warehouse_id,
+        "variant_id": model.variant_id,
+        "entry_type": model.entry_type,
+        "quantity_delta": model.quantity_delta,
+        "balance_after": model.balance_after,
+        "reserved_after": model.reserved_after,
+        "reference_type": model.reference_type,
+        "reference_id": model.reference_id,
+        "notes": model.notes,
+        "recorded_by_user_id": model.recorded_by_user_id,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_tax_profile(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "code": model.code,
+        "description": model.description,
+        "prices_include_tax": model.prices_include_tax,
+        "rules": model.rules_json,
+        "status": model.status,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_price_list_item(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "price_list_id": model.price_list_id,
+        "variant_id": model.variant_id,
+        "price_minor": model.price_minor,
+    }
+
+
+def _serialize_price_list(model, items_by_price_list: dict[str, list[dict[str, object]]]) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "slug": model.slug,
+        "currency": model.currency,
+        "customer_segment": model.customer_segment,
+        "description": model.description,
+        "status": model.status,
+        "items": items_by_price_list.get(model.id, []),
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_coupon(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "code": model.code,
+        "description": model.description,
+        "discount_type": model.discount_type,
+        "discount_value": model.discount_value,
+        "minimum_subtotal_minor": model.minimum_subtotal_minor,
+        "maximum_discount_minor": model.maximum_discount_minor,
+        "applicable_category_ids": model.applicable_category_ids,
+        "applicable_variant_ids": model.applicable_variant_ids,
+        "status": model.status,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_payment(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "order_id": model.order_id,
+        "amount_minor": model.amount_minor,
+        "currency": model.currency,
+        "provider": model.provider,
+        "payment_method": model.payment_method,
+        "status": model.status,
+        "reference": model.reference,
+        "notes": model.notes,
+        "received_at": model.received_at,
+        "recorded_by_user_id": model.recorded_by_user_id,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_refund(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "order_id": model.order_id,
+        "payment_id": model.payment_id,
+        "amount_minor": model.amount_minor,
+        "currency": model.currency,
+        "reason": model.reason,
+        "reference": model.reference,
+        "status": model.status,
+        "refunded_at": model.refunded_at,
+        "recorded_by_user_id": model.recorded_by_user_id,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_invoice(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "order_id": model.order_id,
+        "customer_id": model.customer_id,
+        "invoice_number": model.invoice_number,
+        "status": model.status,
+        "currency": model.currency,
+        "subtotal_minor": model.subtotal_minor,
+        "discount_minor": model.discount_minor,
+        "tax_minor": model.tax_minor,
+        "total_minor": model.total_minor,
+        "issued_at": model.issued_at,
+        "issued_by_user_id": model.issued_by_user_id,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_attribute(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "code": model.code,
+        "slug": model.slug,
+        "label": model.label,
+        "description": model.description,
+        "value_type": model.value_type,
+        "scope": model.scope,
+        "options": model.options_json,
+        "unit_label": model.unit_label,
+        "is_required": model.is_required,
+        "is_filterable": model.is_filterable,
+        "is_variation_axis": model.is_variation_axis,
+        "vertical_bindings": model.vertical_bindings,
+        "status": model.status,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_attribute_set(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "slug": model.slug,
+        "description": model.description,
+        "attribute_ids": model.attribute_ids,
+        "vertical_bindings": model.vertical_bindings,
+        "status": model.status,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_attribute_value(model) -> dict[str, object]:
+    return {"attribute_id": model.attribute_id, "value": model.value_json}
+
+
+def _serialize_variant(model, attribute_values_by_variant: dict[str, list[dict[str, object]]]) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "product_id": model.product_id,
+        "sku": model.sku,
+        "label": model.label,
+        "price_minor": model.price_minor,
+        "currency": model.currency,
+        "inventory_quantity": model.inventory_quantity,
+        "attribute_values": attribute_values_by_variant.get(model.id, []),
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_product(
+    model,
+    variants_by_product: dict[str, list[dict[str, object]]],
+    product_attribute_values_by_product: dict[str, list[dict[str, object]]],
+) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "name": model.name,
+        "slug": model.slug,
+        "description": model.description,
+        "brand_id": model.brand_id,
+        "vendor_id": model.vendor_id,
+        "collection_ids": model.collection_ids,
+        "attribute_set_id": model.attribute_set_id,
+        "category_ids": model.category_ids,
+        "seo_title": model.seo_title,
+        "seo_description": model.seo_description,
+        "status": model.status,
+        "product_attributes": product_attribute_values_by_product.get(model.id, []),
+        "variants": variants_by_product.get(model.id, []),
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_order_line(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "product_id": model.product_id,
+        "variant_id": model.variant_id,
+        "allocated_warehouse_id": model.allocated_warehouse_id,
+        "quantity": model.quantity,
+        "fulfilled_quantity": model.fulfilled_quantity,
+        "unit_price_minor": model.unit_price_minor,
+        "line_total_minor": model.line_total_minor,
+    }
+
+
+def _serialize_fulfillment_line(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "fulfillment_id": model.fulfillment_id,
+        "order_line_id": model.order_line_id,
+        "variant_id": model.variant_id,
+        "quantity": model.quantity,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_fulfillment(model, lines_by_fulfillment: dict[str, list[dict[str, object]]]) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "order_id": model.order_id,
+        "warehouse_id": model.warehouse_id,
+        "fulfillment_number": model.fulfillment_number,
+        "status": model.status,
+        "created_by_user_id": model.created_by_user_id,
+        "packed_at": model.packed_at,
+        "shipped_at": model.shipped_at,
+        "delivered_at": model.delivered_at,
+        "lines": lines_by_fulfillment.get(model.id, []),
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_shipment(model) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "fulfillment_id": model.fulfillment_id,
+        "carrier": model.carrier,
+        "service_level": model.service_level,
+        "tracking_number": model.tracking_number,
+        "status": model.status,
+        "shipped_at": model.shipped_at,
+        "delivered_at": model.delivered_at,
+        "metadata": model.metadata_json,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _serialize_order(
+    model,
+    lines_by_order: dict[str, list[dict[str, object]]],
+    *,
+    payments: list | None = None,
+    refunds: list | None = None,
+    invoices: list | None = None,
+) -> dict[str, object]:
+    return {
+        "id": model.id,
+        "tenant_id": model.tenant_id,
+        "customer_id": model.customer_id,
+        "price_list_id": model.price_list_id,
+        "tax_profile_id": model.tax_profile_id,
+        "coupon_code": model.coupon_code,
+        "status": model.status,
+        "currency": model.currency,
+        "subtotal_minor": model.subtotal_minor,
+        "discount_minor": model.discount_minor,
+        "tax_minor": model.tax_minor,
+        "total_minor": model.total_minor,
+        "payment_status": model.payment_status,
+        "paid_minor": model.paid_minor,
+        "refunded_minor": model.refunded_minor,
+        "balance_minor": model.balance_minor,
+        "invoice_number": model.invoice_number,
+        "invoice_issued_at": model.invoice_issued_at,
+        "inventory_reserved": model.inventory_reserved,
+        "placed_at": model.placed_at,
+        "lines": lines_by_order.get(model.id, []),
+        "payments": [_serialize_payment(item) for item in payments] if payments is not None else None,
+        "refunds": [_serialize_refund(item) for item in refunds] if refunds is not None else None,
+        "invoices": [_serialize_invoice(item) for item in invoices] if invoices is not None else None,
+        "created_at": model.created_at.isoformat(),
+    }
+
+
+def _audit(
+    db: Session,
+    *,
+    tenant_id: str,
+    actor_user_id: str,
+    action: str,
+    subject_type: str,
+    subject_id: str,
+    metadata: dict[str, object],
+) -> None:
+    platform_repository.create_audit_event(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        action=action,
+        subject_type=subject_type,
+        subject_id=subject_id,
+        metadata_json=metadata,
+    )
+
+
+def _outbox_order(db: Session, *, tenant_id: str, order) -> None:
+    platform_repository.enqueue_outbox_event(
+        db,
+        tenant_id=tenant_id,
+        aggregate_id=order.id,
+        event_name="commerce.order.created",
+        payload_json={
+            "order_id": order.id,
+            "customer_id": order.customer_id,
+            "status": order.status,
+            "total_minor": order.total_minor,
+        },
+    )
+
+
+def _outbox_invoice(db: Session, *, tenant_id: str, order) -> None:
+    platform_repository.enqueue_outbox_event(
+        db,
+        tenant_id=tenant_id,
+        aggregate_id=order.id,
+        event_name="invoice.issued",
+        payload_json={
+            "order_id": order.id,
+            "customer_id": order.customer_id,
+            "invoice_number": order.invoice_number,
+            "total_minor": order.total_minor,
+        },
+    )
+
+
+def _outbox_fulfillment(db: Session, *, tenant_id: str, fulfillment) -> None:
+    platform_repository.enqueue_outbox_event(
+        db,
+        tenant_id=tenant_id,
+        aggregate_id=fulfillment.id,
+        event_name="commerce.fulfillment.updated",
+        payload_json={
+            "fulfillment_id": fulfillment.id,
+            "order_id": fulfillment.order_id,
+            "warehouse_id": fulfillment.warehouse_id,
+            "status": fulfillment.status,
+        },
+    )
+
+
+def _outbox_shipment(db: Session, *, tenant_id: str, shipment) -> None:
+    platform_repository.enqueue_outbox_event(
+        db,
+        tenant_id=tenant_id,
+        aggregate_id=shipment.id,
+        event_name="commerce.shipment.updated",
+        payload_json={
+            "shipment_id": shipment.id,
+            "fulfillment_id": shipment.fulfillment_id,
+            "tracking_number": shipment.tracking_number,
+            "status": shipment.status,
+        },
+    )
+
+
+def _order_or_raise(db: Session, *, tenant_id: str, order_id: str):
+    order = commerce_repository.get_order(db, tenant_id=tenant_id, order_id=order_id)
+    if order is None:
+        raise NotFoundError(f"Order '{order_id}' was not found.")
+    return order
+
+
+def _warehouse_or_raise(db: Session, *, tenant_id: str, warehouse_id: str):
+    warehouse = commerce_repository.get_warehouse(db, tenant_id=tenant_id, warehouse_id=warehouse_id)
+    if warehouse is None:
+        raise NotFoundError(f"Commerce warehouse '{warehouse_id}' was not found.")
+    return warehouse
+
+
+def _fulfillment_or_raise(db: Session, *, tenant_id: str, fulfillment_id: str):
+    fulfillment = commerce_repository.get_fulfillment(db, tenant_id=tenant_id, fulfillment_id=fulfillment_id)
+    if fulfillment is None:
+        raise NotFoundError(f"Commerce fulfillment '{fulfillment_id}' was not found.")
+    return fulfillment
+
+
+def _shipment_or_raise(db: Session, *, tenant_id: str, shipment_id: str):
+    shipment = commerce_repository.get_shipment(db, tenant_id=tenant_id, shipment_id=shipment_id)
+    if shipment is None:
+        raise NotFoundError(f"Commerce shipment '{shipment_id}' was not found.")
+    return shipment
+
+
+def _payment_or_raise(db: Session, *, tenant_id: str, payment_id: str):
+    payment = commerce_repository.get_payment(db, tenant_id=tenant_id, payment_id=payment_id)
+    if payment is None:
+        raise NotFoundError(f"Commerce payment '{payment_id}' was not found.")
+    return payment
+
+
+def _invoice_number(order) -> str:
+    return order.invoice_number or f"INV-{order.id[:8].upper()}"
+
+
+def _fulfillment_number(order, count: int) -> str:
+    return f"FUL-{order.id[:6].upper()}-{count + 1:02d}"
+
+
+def _sync_variant_inventory_from_stocks(db: Session, *, tenant_id: str, variant_ids: list[str]) -> None:
+    deduped_variant_ids = _dedupe_strings(variant_ids)
+    if not deduped_variant_ids:
+        return
+    stocks = commerce_repository.list_warehouse_stocks_for_variants(
+        db,
+        tenant_id=tenant_id,
+        variant_ids=deduped_variant_ids,
+    )
+    available_by_variant: dict[str, int] = defaultdict(int)
+    for stock in stocks:
+        available_by_variant[stock.variant_id] += stock.on_hand_quantity - stock.reserved_quantity
+    for variant_id in deduped_variant_ids:
+        variant = commerce_repository.get_variant(db, tenant_id=tenant_id, variant_id=variant_id)
+        if variant is not None and variant_id in available_by_variant:
+            variant.inventory_quantity = max(available_by_variant[variant_id], 0)
+
+
+def _allocate_warehouse_stocks(
+    db: Session,
+    *,
+    tenant_id: str,
+    variant_ids: list[str],
+    quantities: dict[str, int],
+) -> dict[str, Any]:
+    warehouses = commerce_repository.list_warehouses(db, tenant_id=tenant_id)
+    default_warehouse_ids = {warehouse.id for warehouse in warehouses if warehouse.is_default and warehouse.status == "active"}
+    stocks = commerce_repository.list_warehouse_stocks_for_variants(
+        db,
+        tenant_id=tenant_id,
+        variant_ids=variant_ids,
+    )
+    stocks_by_variant: dict[str, list[Any]] = defaultdict(list)
+    for stock in stocks:
+        warehouse = next((item for item in warehouses if item.id == stock.warehouse_id), None)
+        if warehouse is None or warehouse.status != "active":
+            continue
+        stocks_by_variant[stock.variant_id].append(stock)
+
+    allocations: dict[str, Any] = {}
+    for variant_id in variant_ids:
+        requested = quantities[variant_id]
+        candidate_stocks = stocks_by_variant.get(variant_id, [])
+        candidate_stocks.sort(
+            key=lambda item: (
+                0 if item.warehouse_id in default_warehouse_ids else 1,
+                item.created_at.isoformat(),
+            )
+        )
+        allocated = next(
+            (
+                stock
+                for stock in candidate_stocks
+                if (stock.on_hand_quantity - stock.reserved_quantity) >= requested
+            ),
+            None,
+        )
+        if allocated is None:
+            raise ConflictError(f"Insufficient warehouse stock for variant '{variant_id}'.")
+        allocations[variant_id] = allocated
+    return allocations
+
+
+def _recalculate_order_finance(db: Session, order) -> None:
+    payments = commerce_repository.list_payments(db, tenant_id=order.tenant_id, order_id=order.id)
+    refunds = commerce_repository.list_refunds(db, tenant_id=order.tenant_id, order_id=order.id)
+
+    captured_minor = sum(item.amount_minor for item in payments if item.status == "captured")
+    refunded_minor = sum(item.amount_minor for item in refunds if item.status == "processed")
+    order.paid_minor = captured_minor
+    order.refunded_minor = refunded_minor
+    order.balance_minor = max(order.total_minor - captured_minor, 0)
+
+    if refunded_minor >= captured_minor and captured_minor > 0:
+        order.payment_status = "refunded"
+    elif refunded_minor > 0:
+        order.payment_status = "partially_refunded"
+    elif captured_minor >= order.total_minor and order.total_minor > 0:
+        order.payment_status = "paid"
+    elif captured_minor > 0:
+        order.payment_status = "partially_paid"
+    elif any(item.status == "authorized" for item in payments):
+        order.payment_status = "authorized"
+    elif payments and all(item.status == "failed" for item in payments):
+        order.payment_status = "failed"
+    else:
+        order.payment_status = "pending"
+
+    if order.payment_status == "paid" and order.status in {"draft", "placed"}:
+        order.status = "paid"
+
+
+def _validate_attribute_definition(
+    *,
+    value_type: str,
+    scope: str,
+    options: list[dict[str, object]],
+    is_variation_axis: bool,
+) -> list[dict[str, object]]:
+    if value_type not in ATTRIBUTE_VALUE_TYPES:
+        raise ValidationError(f"Unsupported attribute value type '{value_type}'.")
+    if scope not in ATTRIBUTE_SCOPES:
+        raise ValidationError(f"Unsupported attribute scope '{scope}'.")
+
+    normalized_options: list[dict[str, object]] = []
+    option_values: set[str] = set()
+    for option in options:
+        raw_value = str(option.get("value", "")).strip()
+        raw_label = str(option.get("label", "")).strip()
+        if not raw_value or not raw_label:
+            raise ValidationError("Attribute options require both value and label.")
+        if raw_value in option_values:
+            raise ValidationError(f"Duplicate attribute option '{raw_value}' is not allowed.")
+        option_values.add(raw_value)
+        normalized_options.append({"value": raw_value, "label": raw_label})
+
+    if value_type in {"single_select", "multi_select"} and not normalized_options:
+        raise ValidationError("Select attributes require at least one option.")
+    if value_type not in {"single_select", "multi_select"} and normalized_options:
+        raise ValidationError("Attribute options are only valid for select attributes.")
+    if is_variation_axis and scope == "product":
+        raise ValidationError("Variation-axis attributes cannot be product-only.")
+
+    return normalized_options
+
+
+def _normalize_tax_rules(rules: list[dict[str, object]]) -> list[dict[str, object]]:
+    normalized_rules: list[dict[str, object]] = []
+    for rule in rules:
+        label = str(rule.get("label", "")).strip()
+        if not label:
+            raise ValidationError("Tax rules require a label.")
+        rate_basis_points = int(rule.get("rate_basis_points", 0))
+        if rate_basis_points < 0:
+            raise ValidationError("Tax rule rate_basis_points must be non-negative.")
+        normalized_rules.append({"label": label, "rate_basis_points": rate_basis_points})
+    if not normalized_rules:
+        raise ValidationError("Tax profiles require at least one rule.")
+    return normalized_rules
+
+
+def _total_tax_basis_points(tax_profile) -> int:
+    return sum(int(rule.get("rate_basis_points", 0)) for rule in tax_profile.rules_json)
+
+
+def _normalize_attribute_value(model, value: object | None, *, owner: str) -> object | None:
+    if value is None:
+        raise ValidationError(f"{owner} attribute '{model.code}' requires a value.")
+
+    if model.value_type in {"text", "long_text", "color", "date"}:
+        if not isinstance(value, str):
+            raise ValidationError(f"{owner} attribute '{model.code}' expects a string value.")
+        normalized = value.strip()
+        if not normalized:
+            raise ValidationError(f"{owner} attribute '{model.code}' cannot be empty.")
+        return normalized
+
+    if model.value_type == "number":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValidationError(f"{owner} attribute '{model.code}' expects a numeric value.")
+        return value
+
+    if model.value_type == "boolean":
+        if not isinstance(value, bool):
+            raise ValidationError(f"{owner} attribute '{model.code}' expects a boolean value.")
+        return value
+
+    allowed_options = {str(option["value"]) for option in model.options_json}
+    if model.value_type == "single_select":
+        if not isinstance(value, str):
+            raise ValidationError(f"{owner} attribute '{model.code}' expects a single option value.")
+        normalized = value.strip()
+        if normalized not in allowed_options:
+            raise ValidationError(
+                f"{owner} attribute '{model.code}' must use one of the configured options."
+            )
+        return normalized
+
+    if model.value_type == "multi_select":
+        if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+            raise ValidationError(f"{owner} attribute '{model.code}' expects a list of option values.")
+        normalized_values = _dedupe_strings(value)
+        if not normalized_values:
+            raise ValidationError(f"{owner} attribute '{model.code}' requires at least one option.")
+        invalid = [item for item in normalized_values if item not in allowed_options]
+        if invalid:
+            raise ValidationError(
+                f"{owner} attribute '{model.code}' contains invalid options: {', '.join(invalid)}."
+            )
+        return normalized_values
+
+    raise ValidationError(f"Unsupported attribute value type '{model.value_type}'.")
+
+
+def _validate_attribute_payload(
+    *,
+    attribute_lookup: dict[str, Any],
+    values: list[dict[str, object]],
+    allowed_scopes: set[str],
+    owner: str,
+) -> list[dict[str, object]]:
+    seen: set[str] = set()
+    normalized_values: list[dict[str, object]] = []
+
+    for item in values:
+        attribute_id = str(item["attribute_id"])
+        if attribute_id in seen:
+            raise ValidationError(f"Duplicate attribute assignment '{attribute_id}' in {owner}.")
+        seen.add(attribute_id)
+        attribute = attribute_lookup.get(attribute_id)
+        if attribute is None:
+            raise NotFoundError(f"Attribute '{attribute_id}' was not found.")
+        if attribute.scope not in allowed_scopes:
+            raise ValidationError(
+                f"Attribute '{attribute.code}' cannot be assigned in {owner} due to scope mismatch."
+            )
+        normalized_values.append(
+            {
+                "attribute_id": attribute_id,
+                "value": _normalize_attribute_value(attribute, item.get("value"), owner=owner),
+            }
+        )
+
+    return normalized_values
+
+
+def _validate_required_attributes(
+    *,
+    attribute_lookup: dict[str, Any],
+    attribute_ids: list[str],
+    normalized_product_attributes: list[dict[str, object]],
+    normalized_variant_attributes: list[list[dict[str, object]]],
+) -> None:
+    product_seen = {item["attribute_id"] for item in normalized_product_attributes}
+    variant_seen_per_variant = [{item["attribute_id"] for item in values} for values in normalized_variant_attributes]
+
+    for attribute_id in attribute_ids:
+        attribute = attribute_lookup[attribute_id]
+        if not attribute.is_required:
+            continue
+        if attribute.scope in {"product", "both"} and attribute_id not in product_seen:
+            raise ValidationError(f"Required product attribute '{attribute.code}' is missing.")
+        if attribute.scope in {"variant", "both"}:
+            for index, seen in enumerate(variant_seen_per_variant, start=1):
+                if attribute_id not in seen:
+                    raise ValidationError(
+                        f"Required variant attribute '{attribute.code}' is missing on variant #{index}."
+                    )
+
+
+def _validate_variation_axes(
+    *,
+    attribute_lookup: dict[str, Any],
+    normalized_variant_attributes: list[list[dict[str, object]]],
+) -> None:
+    variation_axis_ids = [
+        attribute_id
+        for attribute_id, attribute in attribute_lookup.items()
+        if attribute.is_variation_axis and attribute.scope in {"variant", "both"}
+    ]
+    if not variation_axis_ids:
+        return
+
+    seen_signatures: set[tuple[tuple[str, object], ...]] = set()
+    for index, values in enumerate(normalized_variant_attributes, start=1):
+        value_map = {item["attribute_id"]: item["value"] for item in values}
+        missing_axis_ids = [attribute_id for attribute_id in variation_axis_ids if attribute_id not in value_map]
+        if missing_axis_ids:
+            missing_codes = [attribute_lookup[attribute_id].code for attribute_id in missing_axis_ids]
+            raise ValidationError(
+                f"Variant #{index} is missing variation-axis values: {', '.join(missing_codes)}."
+            )
+        signature = tuple(
+            sorted(
+                (
+                    attribute_id,
+                    _attribute_value_signature(value_map[attribute_id]),
+                )
+                for attribute_id in variation_axis_ids
+            )
+        )
+        if signature in seen_signatures:
+            raise ValidationError("Variant axis combinations must be unique within a product.")
+        seen_signatures.add(signature)
+
+
+def get_overview(db: Session, *, tenant_slug: str) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    categories = commerce_repository.list_categories(db, tenant_id=tenant.id)
+    brands = commerce_repository.list_brands(db, tenant_id=tenant.id)
+    vendors = commerce_repository.list_vendors(db, tenant_id=tenant.id)
+    collections = commerce_repository.list_collections(db, tenant_id=tenant.id)
+    warehouses = commerce_repository.list_warehouses(db, tenant_id=tenant.id)
+    stock_levels = commerce_repository.list_warehouse_stocks(db, tenant_id=tenant.id)
+    tax_profiles = commerce_repository.list_tax_profiles(db, tenant_id=tenant.id)
+    price_lists = commerce_repository.list_price_lists(db, tenant_id=tenant.id)
+    coupons = commerce_repository.list_coupons(db, tenant_id=tenant.id)
+    attributes = commerce_repository.list_attributes(db, tenant_id=tenant.id)
+    attribute_sets = commerce_repository.list_attribute_sets(db, tenant_id=tenant.id)
+    products = commerce_repository.list_products(db, tenant_id=tenant.id)
+    variants = commerce_repository.list_variants(db, tenant_id=tenant.id)
+    orders = commerce_repository.list_orders(db, tenant_id=tenant.id)
+    fulfillments = commerce_repository.list_fulfillments(db, tenant_id=tenant.id)
+    shipments = commerce_repository.list_shipments(db, tenant_id=tenant.id)
+    payments = commerce_repository.list_payments(db, tenant_id=tenant.id)
+    refunds = commerce_repository.list_refunds(db, tenant_id=tenant.id)
+    invoices = commerce_repository.list_invoices(db, tenant_id=tenant.id)
+
+    order_statuses = Counter(order.status for order in orders)
+    payment_statuses = Counter(order.payment_status for order in orders)
+    fulfillment_statuses = Counter(item.status for item in fulfillments)
+    shipment_statuses = Counter(item.status for item in shipments)
+    inventory_units = sum(variant.inventory_quantity for variant in variants)
+    low_stock_items = sum(
+        1
+        for stock in stock_levels
+        if stock.low_stock_threshold > 0 and (stock.on_hand_quantity - stock.reserved_quantity) <= stock.low_stock_threshold
+    )
+
+    return {
+        "tenant_id": tenant.slug,
+        "tenant_record_id": tenant.id,
+        "categories": len(categories),
+        "brands": len(brands),
+        "vendors": len(vendors),
+        "collections": len(collections),
+        "warehouses": len(warehouses),
+        "stock_levels": len(stock_levels),
+        "low_stock_items": low_stock_items,
+        "tax_profiles": len(tax_profiles),
+        "price_lists": len(price_lists),
+        "coupons": len(coupons),
+        "attributes": len(attributes),
+        "attribute_sets": len(attribute_sets),
+        "products": len(products),
+        "variants": len(variants),
+        "inventory_units": inventory_units,
+        "orders": dict(order_statuses),
+        "order_payment_statuses": dict(payment_statuses),
+        "fulfillments": dict(fulfillment_statuses),
+        "shipments": dict(shipment_statuses),
+        "payments": len(payments),
+        "refunds": len(refunds),
+        "invoices": len(invoices),
+        "focus": [
+            "catalog governance and reusable attribute taxonomy",
+            "pricing and tax contracts",
+            "payment, refund, and invoice closure",
+            "warehouse stock and fulfillment operations",
+        ],
+    }
+
+
+def list_categories(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [_serialize_category(item) for item in commerce_repository.list_categories(db, tenant_id=tenant.id)]
+
+
+def list_brands(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [_serialize_brand(item) for item in commerce_repository.list_brands(db, tenant_id=tenant.id)]
+
+
+def create_brand(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    slug: str,
+    code: str,
+    description: str | None,
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_slug = slug.strip().lower()
+    normalized_code = code.strip().lower()
+    if status not in ATTRIBUTE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported brand status '{status}'.")
+    if commerce_repository.find_brand_by_slug(db, tenant_id=tenant.id, slug=normalized_slug):
+        raise ConflictError(f"Commerce brand slug '{normalized_slug}' already exists.")
+    if commerce_repository.find_brand_by_code(db, tenant_id=tenant.id, code=normalized_code):
+        raise ConflictError(f"Commerce brand code '{normalized_code}' already exists.")
+
+    brand = commerce_repository.create_brand(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        slug=normalized_slug,
+        code=normalized_code,
+        description=description,
+        status=status,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.brand.created",
+        subject_type="commerce_brand",
+        subject_id=brand.id,
+        metadata={"slug": normalized_slug, "code": normalized_code},
+    )
+    db.commit()
+    return _serialize_brand(brand)
+
+
+def list_vendors(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [_serialize_vendor(item) for item in commerce_repository.list_vendors(db, tenant_id=tenant.id)]
+
+
+def create_vendor(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    slug: str,
+    code: str,
+    description: str | None,
+    contact_name: str | None,
+    contact_email: str | None,
+    contact_phone: str | None,
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_slug = slug.strip().lower()
+    normalized_code = code.strip().lower()
+    if status not in ATTRIBUTE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported vendor status '{status}'.")
+    if commerce_repository.find_vendor_by_slug(db, tenant_id=tenant.id, slug=normalized_slug):
+        raise ConflictError(f"Commerce vendor slug '{normalized_slug}' already exists.")
+    if commerce_repository.find_vendor_by_code(db, tenant_id=tenant.id, code=normalized_code):
+        raise ConflictError(f"Commerce vendor code '{normalized_code}' already exists.")
+
+    vendor = commerce_repository.create_vendor(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        slug=normalized_slug,
+        code=normalized_code,
+        description=description,
+        contact_name=contact_name,
+        contact_email=contact_email,
+        contact_phone=contact_phone,
+        status=status,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.vendor.created",
+        subject_type="commerce_vendor",
+        subject_id=vendor.id,
+        metadata={"slug": normalized_slug, "code": normalized_code},
+    )
+    db.commit()
+    return _serialize_vendor(vendor)
+
+
+def list_collections(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [_serialize_collection(item) for item in commerce_repository.list_collections(db, tenant_id=tenant.id)]
+
+
+def list_warehouses(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [_serialize_warehouse(item) for item in commerce_repository.list_warehouses(db, tenant_id=tenant.id)]
+
+
+def create_warehouse(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    slug: str,
+    code: str,
+    city: str | None,
+    country: str | None,
+    status: str,
+    is_default: bool,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_slug = slug.strip().lower()
+    normalized_code = code.strip().lower()
+    if status not in WAREHOUSE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported warehouse status '{status}'.")
+    if commerce_repository.find_warehouse_by_slug(db, tenant_id=tenant.id, slug=normalized_slug):
+        raise ConflictError(f"Commerce warehouse slug '{normalized_slug}' already exists.")
+    if commerce_repository.find_warehouse_by_code(db, tenant_id=tenant.id, code=normalized_code):
+        raise ConflictError(f"Commerce warehouse code '{normalized_code}' already exists.")
+
+    if is_default:
+        for warehouse in commerce_repository.list_warehouses(db, tenant_id=tenant.id):
+            warehouse.is_default = False
+
+    warehouse = commerce_repository.create_warehouse(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        slug=normalized_slug,
+        code=normalized_code,
+        city=city,
+        country=country,
+        status=status,
+        is_default=is_default,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.warehouse.created",
+        subject_type="commerce_warehouse",
+        subject_id=warehouse.id,
+        metadata={"slug": normalized_slug, "code": normalized_code, "is_default": is_default},
+    )
+    db.commit()
+    return _serialize_warehouse(warehouse)
+
+
+def list_stock_levels(
+    db: Session,
+    *,
+    tenant_slug: str,
+    warehouse_id: str | None,
+    variant_id: str | None,
+) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    if warehouse_id:
+        _warehouse_or_raise(db, tenant_id=tenant.id, warehouse_id=warehouse_id)
+    if variant_id:
+        variant = commerce_repository.get_variant(db, tenant_id=tenant.id, variant_id=variant_id)
+        if variant is None:
+            raise NotFoundError(f"Variant '{variant_id}' was not found.")
+    return [
+        _serialize_warehouse_stock(item)
+        for item in commerce_repository.list_warehouse_stocks(
+            db,
+            tenant_id=tenant.id,
+            warehouse_id=warehouse_id,
+            variant_id=variant_id,
+        )
+    ]
+
+
+def list_stock_ledger(
+    db: Session,
+    *,
+    tenant_slug: str,
+    warehouse_id: str | None,
+    variant_id: str | None,
+) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    if warehouse_id:
+        _warehouse_or_raise(db, tenant_id=tenant.id, warehouse_id=warehouse_id)
+    if variant_id:
+        variant = commerce_repository.get_variant(db, tenant_id=tenant.id, variant_id=variant_id)
+        if variant is None:
+            raise NotFoundError(f"Variant '{variant_id}' was not found.")
+    return [
+        _serialize_stock_ledger_entry(item)
+        for item in commerce_repository.list_stock_ledger_entries(
+            db,
+            tenant_id=tenant.id,
+            warehouse_id=warehouse_id,
+            variant_id=variant_id,
+        )
+    ]
+
+
+def adjust_stock(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    warehouse_id: str,
+    variant_id: str,
+    quantity_delta: int,
+    notes: str | None,
+    low_stock_threshold: int | None,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    warehouse = _warehouse_or_raise(db, tenant_id=tenant.id, warehouse_id=warehouse_id)
+    if warehouse.status != "active":
+        raise ConflictError("Stock can only be adjusted against an active warehouse.")
+    variant = commerce_repository.get_variant(db, tenant_id=tenant.id, variant_id=variant_id)
+    if variant is None:
+        raise NotFoundError(f"Variant '{variant_id}' was not found.")
+    if quantity_delta == 0:
+        raise ValidationError("Stock adjustment quantity_delta must not be zero.")
+
+    stock = commerce_repository.get_warehouse_stock(
+        db,
+        tenant_id=tenant.id,
+        warehouse_id=warehouse.id,
+        variant_id=variant.id,
+    )
+    if stock is None:
+        stock = commerce_repository.create_warehouse_stock(
+            db,
+            tenant_id=tenant.id,
+            warehouse_id=warehouse.id,
+            variant_id=variant.id,
+            on_hand_quantity=0,
+            reserved_quantity=0,
+            low_stock_threshold=low_stock_threshold or 0,
+        )
+    if low_stock_threshold is not None:
+        stock.low_stock_threshold = low_stock_threshold
+
+    next_on_hand = stock.on_hand_quantity + quantity_delta
+    if next_on_hand < 0:
+        raise ConflictError("Stock adjustment would result in negative on-hand inventory.")
+    if next_on_hand < stock.reserved_quantity:
+        raise ConflictError("Stock adjustment would reduce on-hand inventory below reserved stock.")
+
+    stock.on_hand_quantity = next_on_hand
+    entry_type = "restock" if quantity_delta > 0 else "adjustment"
+    commerce_repository.create_stock_ledger_entry(
+        db,
+        tenant_id=tenant.id,
+        warehouse_id=warehouse.id,
+        variant_id=variant.id,
+        entry_type=entry_type,
+        quantity_delta=quantity_delta,
+        balance_after=stock.on_hand_quantity,
+        reserved_after=stock.reserved_quantity,
+        reference_type="manual_adjustment",
+        reference_id=warehouse.id,
+        notes=notes,
+        recorded_by_user_id=actor_user_id,
+    )
+    _sync_variant_inventory_from_stocks(db, tenant_id=tenant.id, variant_ids=[variant.id])
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.stock.adjusted",
+        subject_type="commerce_warehouse_stock",
+        subject_id=stock.id,
+        metadata={
+            "warehouse_id": warehouse.id,
+            "variant_id": variant.id,
+            "quantity_delta": quantity_delta,
+            "on_hand_quantity": stock.on_hand_quantity,
+            "reserved_quantity": stock.reserved_quantity,
+        },
+    )
+    db.commit()
+    return _serialize_warehouse_stock(stock)
+
+
+def create_collection(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    slug: str,
+    description: str | None,
+    status: str,
+    sort_order: int,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_slug = slug.strip().lower()
+    if status not in ATTRIBUTE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported collection status '{status}'.")
+    if commerce_repository.find_collection_by_slug(db, tenant_id=tenant.id, slug=normalized_slug):
+        raise ConflictError(f"Commerce collection slug '{normalized_slug}' already exists.")
+
+    collection = commerce_repository.create_collection(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        slug=normalized_slug,
+        description=description,
+        status=status,
+        sort_order=sort_order,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.collection.created",
+        subject_type="commerce_collection",
+        subject_id=collection.id,
+        metadata={"slug": normalized_slug, "sort_order": sort_order},
+    )
+    db.commit()
+    return _serialize_collection(collection)
+
+
+def list_tax_profiles(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [_serialize_tax_profile(item) for item in commerce_repository.list_tax_profiles(db, tenant_id=tenant.id)]
+
+
+def create_tax_profile(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    code: str,
+    description: str | None,
+    prices_include_tax: bool,
+    rules: list[dict[str, object]],
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_code = code.strip().lower()
+    normalized_rules = _normalize_tax_rules(rules)
+    if status not in ATTRIBUTE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported tax profile status '{status}'.")
+    if commerce_repository.find_tax_profile_by_code(db, tenant_id=tenant.id, code=normalized_code):
+        raise ConflictError(f"Commerce tax profile code '{normalized_code}' already exists.")
+
+    tax_profile = commerce_repository.create_tax_profile(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        code=normalized_code,
+        description=description,
+        prices_include_tax=prices_include_tax,
+        rules_json=normalized_rules,
+        status=status,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.tax_profile.created",
+        subject_type="commerce_tax_profile",
+        subject_id=tax_profile.id,
+        metadata={"code": normalized_code, "rule_count": len(normalized_rules)},
+    )
+    db.commit()
+    return _serialize_tax_profile(tax_profile)
+
+
+def list_price_lists(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    price_lists = commerce_repository.list_price_lists(db, tenant_id=tenant.id)
+    items_by_price_list: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for price_list in price_lists:
+        items = commerce_repository.list_price_list_items(db, tenant_id=tenant.id, price_list_id=price_list.id)
+        items_by_price_list[price_list.id] = [_serialize_price_list_item(item) for item in items]
+    return [_serialize_price_list(item, items_by_price_list) for item in price_lists]
+
+
+def create_price_list(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    slug: str,
+    currency: str,
+    customer_segment: str | None,
+    description: str | None,
+    status: str,
+    items: list[dict[str, object]],
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_slug = slug.strip().lower()
+    normalized_currency = currency.strip().upper()
+    normalized_customer_segment = customer_segment.strip().lower() if customer_segment else None
+    if status not in ATTRIBUTE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported price list status '{status}'.")
+    if commerce_repository.find_price_list_by_slug(db, tenant_id=tenant.id, slug=normalized_slug):
+        raise ConflictError(f"Commerce price list slug '{normalized_slug}' already exists.")
+
+    deduped_variant_ids = _dedupe_strings([str(item["variant_id"]) for item in items])
+    if len(deduped_variant_ids) != len(items):
+        raise ValidationError("Price list items cannot repeat the same variant.")
+    variants = [commerce_repository.get_variant(db, tenant_id=tenant.id, variant_id=variant_id) for variant_id in deduped_variant_ids]
+    variant_lookup = {variant.id: variant for variant in variants if variant is not None}
+    missing_variant_ids = [variant_id for variant_id in deduped_variant_ids if variant_id not in variant_lookup]
+    if missing_variant_ids:
+        raise NotFoundError(f"Variant(s) not found: {', '.join(missing_variant_ids)}.")
+    for variant in variant_lookup.values():
+        if variant.currency != normalized_currency:
+            raise ValidationError("Price list currency must match the linked variant currency.")
+
+    price_list = commerce_repository.create_price_list(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        slug=normalized_slug,
+        currency=normalized_currency,
+        customer_segment=normalized_customer_segment,
+        description=description,
+        status=status,
+    )
+    created_items = []
+    for item in items:
+        price_minor = int(item["price_minor"])
+        if price_minor < 0:
+            raise ValidationError("Price list item price_minor must be non-negative.")
+        created_items.append(
+            commerce_repository.create_price_list_item(
+                db,
+                tenant_id=tenant.id,
+                price_list_id=price_list.id,
+                variant_id=str(item["variant_id"]),
+                price_minor=price_minor,
+            )
+        )
+
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.price_list.created",
+        subject_type="commerce_price_list",
+        subject_id=price_list.id,
+        metadata={"slug": normalized_slug, "item_count": len(created_items), "currency": normalized_currency},
+    )
+    db.commit()
+    return _serialize_price_list(
+        price_list,
+        {price_list.id: [_serialize_price_list_item(item) for item in created_items]},
+    )
+
+
+def list_coupons(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [_serialize_coupon(item) for item in commerce_repository.list_coupons(db, tenant_id=tenant.id)]
+
+
+def create_coupon(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    code: str,
+    description: str | None,
+    discount_type: str,
+    discount_value: int,
+    minimum_subtotal_minor: int,
+    maximum_discount_minor: int | None,
+    applicable_category_ids: list[str],
+    applicable_variant_ids: list[str],
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_code = code.strip().upper()
+    if discount_type not in COUPON_DISCOUNT_TYPES:
+        raise ValidationError(f"Unsupported coupon discount type '{discount_type}'.")
+    if discount_value < 0:
+        raise ValidationError("Coupon discount_value must be non-negative.")
+    if discount_type == "percent" and discount_value > 10000:
+        raise ValidationError("Percent coupons use basis points and cannot exceed 10000.")
+    if minimum_subtotal_minor < 0:
+        raise ValidationError("Coupon minimum_subtotal_minor must be non-negative.")
+    if maximum_discount_minor is not None and maximum_discount_minor < 0:
+        raise ValidationError("Coupon maximum_discount_minor must be non-negative when provided.")
+    if status not in ATTRIBUTE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported coupon status '{status}'.")
+    if commerce_repository.find_coupon_by_code(db, tenant_id=tenant.id, code=normalized_code):
+        raise ConflictError(f"Commerce coupon code '{normalized_code}' already exists.")
+
+    deduped_category_ids = _dedupe_strings(applicable_category_ids)
+    deduped_variant_ids = _dedupe_strings(applicable_variant_ids)
+    for category_id in deduped_category_ids:
+        category = commerce_repository.get_category(db, tenant_id=tenant.id, category_id=category_id)
+        if category is None:
+            raise NotFoundError(f"Category '{category_id}' was not found.")
+    for variant_id in deduped_variant_ids:
+        variant = commerce_repository.get_variant(db, tenant_id=tenant.id, variant_id=variant_id)
+        if variant is None:
+            raise NotFoundError(f"Variant '{variant_id}' was not found.")
+
+    coupon = commerce_repository.create_coupon(
+        db,
+        tenant_id=tenant.id,
+        code=normalized_code,
+        description=description,
+        discount_type=discount_type,
+        discount_value=discount_value,
+        minimum_subtotal_minor=minimum_subtotal_minor,
+        maximum_discount_minor=maximum_discount_minor,
+        applicable_category_ids=deduped_category_ids,
+        applicable_variant_ids=deduped_variant_ids,
+        status=status,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.coupon.created",
+        subject_type="commerce_coupon",
+        subject_id=coupon.id,
+        metadata={
+            "code": normalized_code,
+            "discount_type": discount_type,
+            "category_scope_count": len(deduped_category_ids),
+            "variant_scope_count": len(deduped_variant_ids),
+        },
+    )
+    db.commit()
+    return _serialize_coupon(coupon)
+
+
+def create_category(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    slug: str,
+    description: str | None,
+    parent_category_id: str | None,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    if commerce_repository.find_category_by_slug(db, tenant_id=tenant.id, slug=slug):
+        raise ConflictError(f"Commerce category slug '{slug}' already exists.")
+    if parent_category_id:
+        parent = commerce_repository.get_category(db, tenant_id=tenant.id, category_id=parent_category_id)
+        if parent is None:
+            raise NotFoundError(f"Parent category '{parent_category_id}' was not found.")
+
+    category = commerce_repository.create_category(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        slug=slug,
+        description=description,
+        parent_category_id=parent_category_id,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.category.created",
+        subject_type="commerce_category",
+        subject_id=category.id,
+        metadata={"slug": slug},
+    )
+    db.commit()
+    return _serialize_category(category)
+
+
+def list_attributes(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [_serialize_attribute(item) for item in commerce_repository.list_attributes(db, tenant_id=tenant.id)]
+
+
+def create_attribute(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    code: str,
+    slug: str,
+    label: str,
+    description: str | None,
+    value_type: str,
+    scope: str,
+    options: list[dict[str, object]],
+    unit_label: str | None,
+    is_required: bool,
+    is_filterable: bool,
+    is_variation_axis: bool,
+    vertical_bindings: list[str],
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_code = code.strip().lower()
+    normalized_slug = slug.strip().lower()
+    normalized_options = _validate_attribute_definition(
+        value_type=value_type,
+        scope=scope,
+        options=options,
+        is_variation_axis=is_variation_axis,
+    )
+    if status not in ATTRIBUTE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported attribute status '{status}'.")
+    if commerce_repository.find_attribute_by_code(db, tenant_id=tenant.id, code=normalized_code):
+        raise ConflictError(f"Commerce attribute code '{normalized_code}' already exists.")
+    if commerce_repository.find_attribute_by_slug(db, tenant_id=tenant.id, slug=normalized_slug):
+        raise ConflictError(f"Commerce attribute slug '{normalized_slug}' already exists.")
+
+    attribute = commerce_repository.create_attribute(
+        db,
+        tenant_id=tenant.id,
+        code=normalized_code,
+        slug=normalized_slug,
+        label=label,
+        description=description,
+        value_type=value_type,
+        scope=scope,
+        options_json=normalized_options,
+        unit_label=unit_label,
+        is_required=is_required,
+        is_filterable=is_filterable,
+        is_variation_axis=is_variation_axis,
+        vertical_bindings=_dedupe_strings(vertical_bindings, default=["commerce"]),
+        status=status,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.attribute.created",
+        subject_type="commerce_attribute",
+        subject_id=attribute.id,
+        metadata={"code": normalized_code, "scope": scope, "value_type": value_type},
+    )
+    db.commit()
+    return _serialize_attribute(attribute)
+
+
+def list_attribute_sets(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [
+        _serialize_attribute_set(item)
+        for item in commerce_repository.list_attribute_sets(db, tenant_id=tenant.id)
+    ]
+
+
+def create_attribute_set(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    slug: str,
+    description: str | None,
+    attribute_ids: list[str],
+    vertical_bindings: list[str],
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_slug = slug.strip().lower()
+    if status not in ATTRIBUTE_ACTIVE_STATUSES:
+        raise ValidationError(f"Unsupported attribute set status '{status}'.")
+    if commerce_repository.find_attribute_set_by_slug(db, tenant_id=tenant.id, slug=normalized_slug):
+        raise ConflictError(f"Commerce attribute set slug '{normalized_slug}' already exists.")
+
+    deduped_attribute_ids = _dedupe_strings(attribute_ids)
+    attributes = commerce_repository.list_attributes_by_ids(
+        db,
+        tenant_id=tenant.id,
+        attribute_ids=deduped_attribute_ids,
+    )
+    attribute_lookup = {attribute.id: attribute for attribute in attributes}
+    missing_attribute_ids = [attribute_id for attribute_id in deduped_attribute_ids if attribute_id not in attribute_lookup]
+    if missing_attribute_ids:
+        raise NotFoundError(f"Attribute(s) not found: {', '.join(missing_attribute_ids)}.")
+
+    attribute_set = commerce_repository.create_attribute_set(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        slug=normalized_slug,
+        description=description,
+        attribute_ids=deduped_attribute_ids,
+        vertical_bindings=_dedupe_strings(vertical_bindings, default=["commerce"]),
+        status=status,
+    )
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.attribute_set.created",
+        subject_type="commerce_attribute_set",
+        subject_id=attribute_set.id,
+        metadata={"slug": normalized_slug, "attribute_count": len(deduped_attribute_ids)},
+    )
+    db.commit()
+    return _serialize_attribute_set(attribute_set)
+
+
+def list_products(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    products = commerce_repository.list_products(db, tenant_id=tenant.id)
+    variants = commerce_repository.list_variants_for_products(
+        db,
+        tenant_id=tenant.id,
+        product_ids=[product.id for product in products],
+    )
+    product_attribute_values = commerce_repository.list_product_attribute_values_for_products(
+        db,
+        tenant_id=tenant.id,
+        product_ids=[product.id for product in products],
+    )
+    variant_attribute_values = commerce_repository.list_variant_attribute_values_for_variants(
+        db,
+        tenant_id=tenant.id,
+        variant_ids=[variant.id for variant in variants],
+    )
+
+    product_attribute_values_by_product: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for value in product_attribute_values:
+        product_attribute_values_by_product[value.product_id].append(_serialize_attribute_value(value))
+
+    variant_attribute_values_by_variant: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for value in variant_attribute_values:
+        variant_attribute_values_by_variant[value.variant_id].append(_serialize_attribute_value(value))
+
+    variants_by_product: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for variant in variants:
+        variants_by_product[variant.product_id].append(
+            _serialize_variant(variant, variant_attribute_values_by_variant)
+        )
+
+    return [
+        _serialize_product(item, variants_by_product, product_attribute_values_by_product)
+        for item in products
+    ]
+
+
+def create_product(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    name: str,
+    slug: str,
+    description: str | None,
+    brand_id: str | None,
+    vendor_id: str | None,
+    collection_ids: list[str],
+    attribute_set_id: str | None,
+    category_ids: list[str],
+    seo_title: str | None,
+    seo_description: str | None,
+    status: str,
+    product_attributes: list[dict[str, object]],
+    variants: list[dict[str, object]],
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_slug = slug.strip().lower()
+    if commerce_repository.find_product_by_slug(db, tenant_id=tenant.id, slug=normalized_slug):
+        raise ConflictError(f"Commerce product slug '{normalized_slug}' already exists.")
+
+    for category_id in category_ids:
+        category = commerce_repository.get_category(db, tenant_id=tenant.id, category_id=category_id)
+        if category is None:
+            raise NotFoundError(f"Category '{category_id}' was not found.")
+
+    brand = None
+    if brand_id:
+        brand = commerce_repository.get_brand(db, tenant_id=tenant.id, brand_id=brand_id)
+        if brand is None:
+            raise NotFoundError(f"Brand '{brand_id}' was not found.")
+
+    vendor = None
+    if vendor_id:
+        vendor = commerce_repository.get_vendor(db, tenant_id=tenant.id, vendor_id=vendor_id)
+        if vendor is None:
+            raise NotFoundError(f"Vendor '{vendor_id}' was not found.")
+
+    deduped_collection_ids = _dedupe_strings(collection_ids)
+    collections = commerce_repository.list_collections_by_ids(
+        db,
+        tenant_id=tenant.id,
+        collection_ids=deduped_collection_ids,
+    )
+    collection_lookup = {collection.id: collection for collection in collections}
+    missing_collection_ids = [
+        collection_id for collection_id in deduped_collection_ids if collection_id not in collection_lookup
+    ]
+    if missing_collection_ids:
+        raise NotFoundError(f"Collection(s) not found: {', '.join(missing_collection_ids)}.")
+
+    for variant in variants:
+        if commerce_repository.find_variant_by_sku(db, tenant_id=tenant.id, sku=str(variant["sku"])):
+            raise ConflictError(f"Commerce variant SKU '{variant['sku']}' already exists.")
+
+    attribute_set = None
+    attribute_ids_from_values = [str(item["attribute_id"]) for item in product_attributes]
+    attribute_ids_from_values.extend(
+        str(item["attribute_id"])
+        for variant in variants
+        for item in variant.get("attribute_values", [])
+    )
+
+    if attribute_set_id:
+        attribute_set = commerce_repository.get_attribute_set(
+            db,
+            tenant_id=tenant.id,
+            attribute_set_id=attribute_set_id,
+        )
+        if attribute_set is None:
+            raise NotFoundError(f"Attribute set '{attribute_set_id}' was not found.")
+        attribute_ids = _dedupe_strings(attribute_set.attribute_ids + attribute_ids_from_values)
+    else:
+        attribute_ids = _dedupe_strings(attribute_ids_from_values)
+
+    attributes = commerce_repository.list_attributes_by_ids(
+        db,
+        tenant_id=tenant.id,
+        attribute_ids=attribute_ids,
+    )
+    attribute_lookup = {attribute.id: attribute for attribute in attributes}
+    missing_attribute_ids = [attribute_id for attribute_id in attribute_ids if attribute_id not in attribute_lookup]
+    if missing_attribute_ids:
+        raise NotFoundError(f"Attribute(s) not found: {', '.join(missing_attribute_ids)}.")
+
+    if attribute_set is not None:
+        allowed_attribute_ids = set(attribute_set.attribute_ids)
+        payload_attribute_ids = set(attribute_ids_from_values)
+        disallowed_attribute_ids = [attribute_id for attribute_id in payload_attribute_ids if attribute_id not in allowed_attribute_ids]
+        if disallowed_attribute_ids:
+            raise ValidationError("Product payload includes attributes outside the selected attribute set.")
+    else:
+        allowed_attribute_ids = set(attribute_ids)
+
+    normalized_product_attributes = _validate_attribute_payload(
+        attribute_lookup=attribute_lookup,
+        values=product_attributes,
+        allowed_scopes={"product", "both"},
+        owner="product",
+    )
+    normalized_variant_attributes = [
+        _validate_attribute_payload(
+            attribute_lookup=attribute_lookup,
+            values=variant.get("attribute_values", []),
+            allowed_scopes={"variant", "both"},
+            owner=f"variant '{variant['sku']}'",
+        )
+        for variant in variants
+    ]
+
+    required_attribute_ids = attribute_set.attribute_ids if attribute_set is not None else attribute_ids
+    if required_attribute_ids:
+        _validate_required_attributes(
+            attribute_lookup=attribute_lookup,
+            attribute_ids=required_attribute_ids,
+            normalized_product_attributes=normalized_product_attributes,
+            normalized_variant_attributes=normalized_variant_attributes,
+        )
+
+    axis_lookup = {
+        attribute_id: attribute
+        for attribute_id, attribute in attribute_lookup.items()
+        if attribute_id in allowed_attribute_ids
+    }
+    _validate_variation_axes(
+        attribute_lookup=axis_lookup,
+        normalized_variant_attributes=normalized_variant_attributes,
+    )
+
+    product = commerce_repository.create_product(
+        db,
+        tenant_id=tenant.id,
+        name=name,
+        slug=normalized_slug,
+        description=description,
+        brand_id=brand.id if brand is not None else None,
+        vendor_id=vendor.id if vendor is not None else None,
+        collection_ids=deduped_collection_ids,
+        attribute_set_id=attribute_set.id if attribute_set is not None else None,
+        category_ids=category_ids,
+        seo_title=seo_title,
+        seo_description=seo_description,
+        status=status,
+    )
+
+    created_product_attribute_values = [
+        commerce_repository.create_product_attribute_value(
+            db,
+            tenant_id=tenant.id,
+            product_id=product.id,
+            attribute_id=str(item["attribute_id"]),
+            value_json=item["value"],
+        )
+        for item in normalized_product_attributes
+    ]
+
+    created_variants = []
+    created_variant_attribute_values_by_variant: dict[str, list[Any]] = defaultdict(list)
+    for variant_payload, normalized_variant_value_list in zip(variants, normalized_variant_attributes, strict=True):
+        variant = commerce_repository.create_variant(
+            db,
+            tenant_id=tenant.id,
+            product_id=product.id,
+            sku=str(variant_payload["sku"]),
+            label=str(variant_payload["label"]),
+            price_minor=int(variant_payload["price_minor"]),
+            currency=str(variant_payload["currency"]),
+            inventory_quantity=int(variant_payload["inventory_quantity"]),
+        )
+        created_variants.append(variant)
+        for value in normalized_variant_value_list:
+            created_value = commerce_repository.create_variant_attribute_value(
+                db,
+                tenant_id=tenant.id,
+                variant_id=variant.id,
+                attribute_id=str(value["attribute_id"]),
+                value_json=value["value"],
+            )
+            created_variant_attribute_values_by_variant[variant.id].append(created_value)
+
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.product.created",
+        subject_type="commerce_product",
+        subject_id=product.id,
+        metadata={
+            "slug": normalized_slug,
+            "variant_count": len(created_variants),
+            "attribute_set_id": product.attribute_set_id,
+            "product_attribute_count": len(created_product_attribute_values),
+            "brand_id": product.brand_id,
+            "vendor_id": product.vendor_id,
+            "collection_count": len(product.collection_ids),
+        },
+    )
+    db.commit()
+
+    serialized_product_attribute_values = {
+        product.id: [_serialize_attribute_value(item) for item in created_product_attribute_values]
+    }
+    serialized_variants = {
+        product.id: [
+            _serialize_variant(
+                variant,
+                {
+                    variant.id: [
+                        _serialize_attribute_value(item)
+                        for item in created_variant_attribute_values_by_variant.get(variant.id, [])
+                    ]
+                },
+            )
+            for variant in created_variants
+        ]
+    }
+    return _serialize_product(product, serialized_variants, serialized_product_attribute_values)
+
+
+def list_orders(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    orders = commerce_repository.list_orders(db, tenant_id=tenant.id)
+    lines = commerce_repository.list_order_lines_for_orders(
+        db,
+        tenant_id=tenant.id,
+        order_ids=[order.id for order in orders],
+    )
+    lines_by_order: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for line in lines:
+        lines_by_order[line.order_id].append(_serialize_order_line(line))
+    return [_serialize_order(order, lines_by_order) for order in orders]
+
+
+def list_fulfillments(db: Session, *, tenant_slug: str, order_id: str | None) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    fulfillments = commerce_repository.list_fulfillments(db, tenant_id=tenant.id, order_id=order_id)
+    fulfillment_lines = commerce_repository.list_fulfillment_lines(
+        db,
+        tenant_id=tenant.id,
+        fulfillment_ids=[fulfillment.id for fulfillment in fulfillments],
+    )
+    lines_by_fulfillment: dict[str, list[dict[str, object]]] = defaultdict(list)
+    for line in fulfillment_lines:
+        lines_by_fulfillment[line.fulfillment_id].append(_serialize_fulfillment_line(line))
+    return [_serialize_fulfillment(item, lines_by_fulfillment) for item in fulfillments]
+
+
+def list_shipments(db: Session, *, tenant_slug: str, fulfillment_id: str | None) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    if fulfillment_id:
+        _fulfillment_or_raise(db, tenant_id=tenant.id, fulfillment_id=fulfillment_id)
+    return [
+        _serialize_shipment(item)
+        for item in commerce_repository.list_shipments(
+            db,
+            tenant_id=tenant.id,
+            fulfillment_id=fulfillment_id,
+        )
+    ]
+
+
+def list_payments(db: Session, *, tenant_slug: str, order_id: str | None) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [
+        _serialize_payment(item)
+        for item in commerce_repository.list_payments(db, tenant_id=tenant.id, order_id=order_id)
+    ]
+
+
+def list_refunds(db: Session, *, tenant_slug: str, order_id: str | None) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [
+        _serialize_refund(item)
+        for item in commerce_repository.list_refunds(db, tenant_id=tenant.id, order_id=order_id)
+    ]
+
+
+def list_invoices(db: Session, *, tenant_slug: str, order_id: str | None) -> list[dict[str, object]]:
+    tenant = _tenant(db, tenant_slug)
+    return [
+        _serialize_invoice(item)
+        for item in commerce_repository.list_invoices(db, tenant_id=tenant.id, order_id=order_id)
+    ]
+
+
+def get_order_finance_detail(db: Session, *, tenant_slug: str, order_id: str) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    order = _order_or_raise(db, tenant_id=tenant.id, order_id=order_id)
+    _recalculate_order_finance(db, order)
+    db.flush()
+    lines = commerce_repository.list_order_lines_for_orders(db, tenant_id=tenant.id, order_ids=[order.id])
+    payments = commerce_repository.list_payments(db, tenant_id=tenant.id, order_id=order.id)
+    refunds = commerce_repository.list_refunds(db, tenant_id=tenant.id, order_id=order.id)
+    invoices = commerce_repository.list_invoices(db, tenant_id=tenant.id, order_id=order.id)
+    return _serialize_order(
+        order,
+        {order.id: [_serialize_order_line(line) for line in lines]},
+        payments=payments,
+        refunds=refunds,
+        invoices=invoices,
+    )
+
+
+def _reserve_inventory(variants: list, quantities: dict[str, int]) -> None:
+    for variant in variants:
+        requested = quantities.get(variant.id, 0)
+        if variant.inventory_quantity < requested:
+            raise ConflictError(f"Insufficient inventory for SKU '{variant.sku}'.")
+    for variant in variants:
+        variant.inventory_quantity -= quantities.get(variant.id, 0)
+
+
+def _restore_inventory(variants: list, quantities: dict[str, int]) -> None:
+    for variant in variants:
+        variant.inventory_quantity += quantities.get(variant.id, 0)
+
+
+def _reserve_order_lines_against_warehouses(
+    db: Session,
+    *,
+    tenant_id: str,
+    order,
+    order_lines: list,
+    actor_user_id: str,
+) -> None:
+    variant_ids = [line.variant_id for line in order_lines]
+    quantities = {line.variant_id: line.quantity - line.fulfilled_quantity for line in order_lines}
+    allocations = _allocate_warehouse_stocks(db, tenant_id=tenant_id, variant_ids=variant_ids, quantities=quantities)
+    for line in order_lines:
+        stock = allocations[line.variant_id]
+        stock.reserved_quantity += quantities[line.variant_id]
+        line.allocated_warehouse_id = stock.warehouse_id
+        commerce_repository.create_stock_ledger_entry(
+            db,
+            tenant_id=tenant_id,
+            warehouse_id=stock.warehouse_id,
+            variant_id=line.variant_id,
+            entry_type="reservation",
+            quantity_delta=0,
+            balance_after=stock.on_hand_quantity,
+            reserved_after=stock.reserved_quantity,
+            reference_type="commerce_order",
+            reference_id=order.id,
+            notes=f"Reserved stock for order {order.id}.",
+            recorded_by_user_id=actor_user_id,
+        )
+    _sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=variant_ids)
+
+
+def _release_order_lines_from_warehouses(
+    db: Session,
+    *,
+    tenant_id: str,
+    order,
+    order_lines: list,
+    actor_user_id: str,
+) -> None:
+    touched_variant_ids: list[str] = []
+    for line in order_lines:
+        outstanding_quantity = max(line.quantity - line.fulfilled_quantity, 0)
+        if outstanding_quantity <= 0 or not line.allocated_warehouse_id:
+            continue
+        stock = commerce_repository.get_warehouse_stock(
+            db,
+            tenant_id=tenant_id,
+            warehouse_id=line.allocated_warehouse_id,
+            variant_id=line.variant_id,
+        )
+        if stock is None:
+            raise ConflictError("Allocated warehouse stock record is missing for order line release.")
+        if stock.reserved_quantity < outstanding_quantity:
+            raise ConflictError("Warehouse reserved stock is lower than the order release quantity.")
+        stock.reserved_quantity -= outstanding_quantity
+        commerce_repository.create_stock_ledger_entry(
+            db,
+            tenant_id=tenant_id,
+            warehouse_id=stock.warehouse_id,
+            variant_id=line.variant_id,
+            entry_type="release",
+            quantity_delta=0,
+            balance_after=stock.on_hand_quantity,
+            reserved_after=stock.reserved_quantity,
+            reference_type="commerce_order",
+            reference_id=order.id,
+            notes=f"Released reserved stock for cancelled order {order.id}.",
+            recorded_by_user_id=actor_user_id,
+        )
+        touched_variant_ids.append(line.variant_id)
+    _sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=touched_variant_ids)
+
+
+def _mark_order_fulfillment_state(order_lines: list, order) -> None:
+    if order_lines and all(line.fulfilled_quantity >= line.quantity for line in order_lines):
+        order.status = "fulfilled"
+
+
+def create_order(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    customer_id: str,
+    price_list_id: str | None,
+    tax_profile_id: str | None,
+    coupon_code: str | None,
+    status: str,
+    currency: str,
+    lines: list[dict[str, int | str]],
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    normalized_currency = currency.strip().upper()
+    variant_models_by_id: dict[str, Any] = {}
+    product_models_by_id: dict[str, Any] = {}
+    line_payloads: list[tuple[Any, int]] = []
+    quantities: dict[str, int] = {}
+    subtotal_minor = 0
+
+    price_list = None
+    if price_list_id:
+        price_list = commerce_repository.get_price_list(db, tenant_id=tenant.id, price_list_id=price_list_id)
+        if price_list is None:
+            raise NotFoundError(f"Price list '{price_list_id}' was not found.")
+        if price_list.status != "active":
+            raise ValidationError("Only active price lists can be used for order pricing.")
+        if price_list.currency != normalized_currency:
+            raise ValidationError("Order currency must match the selected price list currency.")
+
+    tax_profile = None
+    if tax_profile_id:
+        tax_profile = commerce_repository.get_tax_profile(db, tenant_id=tenant.id, tax_profile_id=tax_profile_id)
+        if tax_profile is None:
+            raise NotFoundError(f"Tax profile '{tax_profile_id}' was not found.")
+        if tax_profile.status != "active":
+            raise ValidationError("Only active tax profiles can be used for order pricing.")
+
+    coupon = None
+    normalized_coupon_code = coupon_code.strip().upper() if coupon_code else None
+    if normalized_coupon_code:
+        coupon = commerce_repository.find_coupon_by_code(db, tenant_id=tenant.id, code=normalized_coupon_code)
+        if coupon is None:
+            raise NotFoundError(f"Coupon '{normalized_coupon_code}' was not found.")
+        if coupon.status != "active":
+            raise ValidationError("Only active coupons can be applied to orders.")
+
+    for line in lines:
+        variant = commerce_repository.get_variant(db, tenant_id=tenant.id, variant_id=str(line["variant_id"]))
+        if variant is None:
+            raise NotFoundError(f"Variant '{line['variant_id']}' was not found.")
+        if variant.currency != normalized_currency:
+            raise ValidationError("Order currency must match the selected variant currency.")
+        quantity = int(line["quantity"])
+        if quantity <= 0:
+            raise ConflictError("Order quantities must be positive.")
+        product = commerce_repository.get_product(db, tenant_id=tenant.id, product_id=variant.product_id)
+        if product is None:
+            raise NotFoundError(f"Product '{variant.product_id}' was not found for variant '{variant.id}'.")
+        variant_models_by_id[variant.id] = variant
+        product_models_by_id[product.id] = product
+        quantities[variant.id] = quantities.get(variant.id, 0) + quantity
+        line_payloads.append((variant, quantity))
+
+    price_list_item_lookup: dict[str, Any] = {}
+    if price_list:
+        price_list_items = commerce_repository.list_price_list_items_for_variants(
+            db,
+            tenant_id=tenant.id,
+            price_list_id=price_list.id,
+            variant_ids=list(variant_models_by_id.keys()),
+        )
+        price_list_item_lookup = {item.variant_id: item for item in price_list_items}
+
+    priced_line_payloads: list[tuple[Any, Any, int, int, int]] = []
+    for variant, quantity in line_payloads:
+        product = product_models_by_id[variant.product_id]
+        unit_price_minor = price_list_item_lookup.get(variant.id).price_minor if variant.id in price_list_item_lookup else variant.price_minor
+        line_total_minor = unit_price_minor * quantity
+        priced_line_payloads.append((product, variant, quantity, unit_price_minor, line_total_minor))
+        subtotal_minor += line_total_minor
+
+    discount_minor = 0
+    if coupon:
+        if subtotal_minor < coupon.minimum_subtotal_minor:
+            raise ValidationError("Order subtotal does not meet the coupon minimum.")
+        eligible_subtotal_minor = 0
+        category_scope = set(coupon.applicable_category_ids or [])
+        variant_scope = set(coupon.applicable_variant_ids or [])
+        for product, variant, _quantity, _unit_price_minor, line_total_minor in priced_line_payloads:
+            category_match = bool(category_scope.intersection(product.category_ids))
+            variant_match = variant.id in variant_scope
+            if not category_scope and not variant_scope:
+                eligible_subtotal_minor += line_total_minor
+            elif category_match or variant_match:
+                eligible_subtotal_minor += line_total_minor
+        if eligible_subtotal_minor <= 0:
+            raise ValidationError("Coupon does not apply to the selected order lines.")
+        if coupon.discount_type == "fixed":
+            discount_minor = min(coupon.discount_value, eligible_subtotal_minor)
+        else:
+            discount_minor = (eligible_subtotal_minor * coupon.discount_value) // 10000
+        if coupon.maximum_discount_minor is not None:
+            discount_minor = min(discount_minor, coupon.maximum_discount_minor)
+        discount_minor = min(discount_minor, subtotal_minor)
+
+    taxable_minor = max(subtotal_minor - discount_minor, 0)
+    tax_minor = 0
+    total_minor = taxable_minor
+    if tax_profile:
+        total_tax_basis_points = _total_tax_basis_points(tax_profile)
+        if tax_profile.prices_include_tax:
+            denominator = 10000 + total_tax_basis_points
+            tax_minor = (taxable_minor * total_tax_basis_points) // denominator if denominator else 0
+            total_minor = taxable_minor
+        else:
+            tax_minor = (taxable_minor * total_tax_basis_points) // 10000
+            total_minor = taxable_minor + tax_minor
+
+    variant_models = list(variant_models_by_id.values())
+    inventory_reserved = status in {"placed", "paid", "fulfilled"}
+    placed_at = datetime.now(tz=UTC).isoformat() if status in {"placed", "paid", "fulfilled"} else None
+    order = commerce_repository.create_order(
+        db,
+        tenant_id=tenant.id,
+        customer_id=customer_id,
+        price_list_id=price_list.id if price_list is not None else None,
+        tax_profile_id=tax_profile.id if tax_profile is not None else None,
+        coupon_code=normalized_coupon_code,
+        status=status,
+        currency=normalized_currency,
+        subtotal_minor=subtotal_minor,
+        discount_minor=discount_minor,
+        tax_minor=tax_minor,
+        total_minor=total_minor,
+        payment_status="pending",
+        paid_minor=0,
+        refunded_minor=0,
+        balance_minor=total_minor,
+        invoice_number=None,
+        invoice_issued_at=None,
+        inventory_reserved=inventory_reserved,
+        placed_at=placed_at,
+    )
+
+    created_lines = []
+    for _product, variant, quantity, unit_price_minor, line_total_minor in priced_line_payloads:
+        line = commerce_repository.create_order_line(
+            db,
+            order_id=order.id,
+            tenant_id=tenant.id,
+            product_id=variant.product_id,
+            variant_id=variant.id,
+            allocated_warehouse_id=None,
+            quantity=quantity,
+            fulfilled_quantity=0,
+            unit_price_minor=unit_price_minor,
+            line_total_minor=line_total_minor,
+        )
+        created_lines.append(line)
+
+    if inventory_reserved:
+        warehouse_stocks = commerce_repository.list_warehouse_stocks_for_variants(
+            db,
+            tenant_id=tenant.id,
+            variant_ids=list(variant_models_by_id.keys()),
+        )
+        if warehouse_stocks:
+            _reserve_order_lines_against_warehouses(
+                db,
+                tenant_id=tenant.id,
+                order=order,
+                order_lines=created_lines,
+                actor_user_id=actor_user_id,
+            )
+        else:
+            _reserve_inventory(variant_models, quantities)
+
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.order.created",
+        subject_type="commerce_order",
+        subject_id=order.id,
+        metadata={
+            "customer_id": customer_id,
+            "status": status,
+            "subtotal_minor": subtotal_minor,
+            "discount_minor": discount_minor,
+            "tax_minor": tax_minor,
+            "total_minor": total_minor,
+        },
+    )
+    _outbox_order(db, tenant_id=tenant.id, order=order)
+    db.commit()
+    return _serialize_order(order, {order.id: [_serialize_order_line(line) for line in created_lines]})
+
+
+def record_payment(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    order_id: str,
+    amount_minor: int,
+    provider: str | None,
+    payment_method: str,
+    status: str,
+    reference: str | None,
+    notes: str | None,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    order = _order_or_raise(db, tenant_id=tenant.id, order_id=order_id)
+    if order.status == "cancelled":
+        raise ConflictError("Payments cannot be recorded against a cancelled order.")
+    if status not in PAYMENT_RECORD_STATUSES:
+        raise ValidationError(f"Unsupported payment status '{status}'.")
+
+    _recalculate_order_finance(db, order)
+    if status in {"authorized", "captured"} and amount_minor > order.balance_minor:
+        raise ConflictError("Payment amount cannot exceed the remaining order balance.")
+
+    payment = commerce_repository.create_payment(
+        db,
+        tenant_id=tenant.id,
+        order_id=order.id,
+        amount_minor=amount_minor,
+        currency=order.currency,
+        provider=provider.strip().lower() if provider else None,
+        payment_method=payment_method,
+        status=status,
+        reference=reference,
+        notes=notes,
+        received_at=datetime.now(tz=UTC).isoformat(),
+        recorded_by_user_id=actor_user_id,
+    )
+    _recalculate_order_finance(db, order)
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.payment.recorded",
+        subject_type="commerce_payment",
+        subject_id=payment.id,
+        metadata={"order_id": order.id, "amount_minor": amount_minor, "payment_method": payment_method, "status": status},
+    )
+    db.commit()
+    return get_order_finance_detail(db, tenant_slug=tenant_slug, order_id=order_id)
+
+
+def record_refund(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    order_id: str,
+    payment_id: str,
+    amount_minor: int,
+    reason: str,
+    reference: str | None,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    order = _order_or_raise(db, tenant_id=tenant.id, order_id=order_id)
+    payment = _payment_or_raise(db, tenant_id=tenant.id, payment_id=payment_id)
+    if payment.order_id != order.id:
+        raise ConflictError("Payment does not belong to the provided order.")
+    if payment.status != "captured":
+        raise ConflictError("Only captured payments can be refunded.")
+
+    existing_refunds = commerce_repository.list_refunds(db, tenant_id=tenant.id, order_id=order.id)
+    refunded_for_payment_minor = sum(
+        item.amount_minor for item in existing_refunds if item.payment_id == payment.id and item.status == "processed"
+    )
+    refundable_balance_minor = payment.amount_minor - refunded_for_payment_minor
+    if amount_minor > refundable_balance_minor:
+        raise ConflictError("Refund amount exceeds the refundable balance for this payment.")
+
+    refund = commerce_repository.create_refund(
+        db,
+        tenant_id=tenant.id,
+        order_id=order.id,
+        payment_id=payment.id,
+        amount_minor=amount_minor,
+        currency=order.currency,
+        reason=reason,
+        reference=reference,
+        status="processed",
+        refunded_at=datetime.now(tz=UTC).isoformat(),
+        recorded_by_user_id=actor_user_id,
+    )
+    if amount_minor == refundable_balance_minor:
+        payment.status = "refunded"
+    _recalculate_order_finance(db, order)
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.refund.recorded",
+        subject_type="commerce_refund",
+        subject_id=refund.id,
+        metadata={"order_id": order.id, "payment_id": payment.id, "amount_minor": amount_minor},
+    )
+    db.commit()
+    return get_order_finance_detail(db, tenant_slug=tenant_slug, order_id=order_id)
+
+
+def issue_order_invoice(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    order_id: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    order = _order_or_raise(db, tenant_id=tenant.id, order_id=order_id)
+    _recalculate_order_finance(db, order)
+    if order.balance_minor != 0:
+        raise ConflictError("Invoice cannot be issued while order balance remains.")
+    if order.invoice_issued_at is not None:
+        raise ConflictError("Invoice has already been issued for this order.")
+
+    invoice_number = _invoice_number(order)
+    issued_at = datetime.now(tz=UTC).isoformat()
+    invoice = commerce_repository.create_invoice(
+        db,
+        tenant_id=tenant.id,
+        order_id=order.id,
+        customer_id=order.customer_id,
+        invoice_number=invoice_number,
+        status="issued",
+        currency=order.currency,
+        subtotal_minor=order.subtotal_minor,
+        discount_minor=order.discount_minor,
+        tax_minor=order.tax_minor,
+        total_minor=order.total_minor,
+        issued_at=issued_at,
+        issued_by_user_id=actor_user_id,
+    )
+    order.invoice_number = invoice.invoice_number
+    order.invoice_issued_at = invoice.issued_at
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.invoice.issued",
+        subject_type="commerce_order",
+        subject_id=order.id,
+        metadata={"invoice_number": invoice.invoice_number, "customer_id": order.customer_id},
+    )
+    _outbox_invoice(db, tenant_id=tenant.id, order=order)
+    db.commit()
+    return get_order_finance_detail(db, tenant_slug=tenant_slug, order_id=order_id)
+
+
+def create_fulfillment(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    order_id: str,
+    warehouse_id: str | None,
+    lines: list[dict[str, object]],
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    order = _order_or_raise(db, tenant_id=tenant.id, order_id=order_id)
+    if order.status == "cancelled":
+        raise ConflictError("Fulfillment cannot be created for a cancelled order.")
+
+    order_lines = commerce_repository.list_order_lines_for_orders(db, tenant_id=tenant.id, order_ids=[order.id])
+    if not order_lines:
+        raise ConflictError("Order has no lines to fulfill.")
+
+    order_line_lookup = {line.id: line for line in order_lines}
+    existing_fulfillments = commerce_repository.list_fulfillments(db, tenant_id=tenant.id, order_id=order.id)
+    pending_fulfillment_ids = [
+        fulfillment.id for fulfillment in existing_fulfillments if fulfillment.status in {"pending_pick", "packed"}
+    ]
+    pending_fulfillment_lines = commerce_repository.list_fulfillment_lines(
+        db,
+        tenant_id=tenant.id,
+        fulfillment_ids=pending_fulfillment_ids,
+    )
+    pending_quantities_by_order_line: dict[str, int] = defaultdict(int)
+    for line in pending_fulfillment_lines:
+        pending_quantities_by_order_line[line.order_line_id] += line.quantity
+
+    outstanding_lines = [
+        line
+        for line in order_lines
+        if (line.quantity - line.fulfilled_quantity - pending_quantities_by_order_line.get(line.id, 0)) > 0
+    ]
+    if not outstanding_lines:
+        raise ConflictError("All order lines are already fulfilled.")
+
+    requested_lines = lines or [
+        {"order_line_id": line.id, "quantity": line.quantity - line.fulfilled_quantity}
+        for line in outstanding_lines
+    ]
+    deduped_line_ids = _dedupe_strings([str(item["order_line_id"]) for item in requested_lines])
+    if len(deduped_line_ids) != len(requested_lines):
+        raise ValidationError("Fulfillment lines cannot repeat the same order line.")
+
+    selected_lines: list[tuple[Any, int]] = []
+    for item in requested_lines:
+        line = order_line_lookup.get(str(item["order_line_id"]))
+        if line is None:
+            raise NotFoundError(f"Order line '{item['order_line_id']}' was not found.")
+        remaining_quantity = line.quantity - line.fulfilled_quantity - pending_quantities_by_order_line.get(line.id, 0)
+        quantity = int(item["quantity"])
+        if quantity <= 0:
+            raise ValidationError("Fulfillment quantity must be positive.")
+        if quantity > remaining_quantity:
+            raise ConflictError("Fulfillment quantity exceeds the remaining quantity on the order line.")
+        selected_lines.append((line, quantity))
+
+    selected_warehouse_ids = {line.allocated_warehouse_id for line, _ in selected_lines if line.allocated_warehouse_id}
+    fulfillment_warehouse = None
+    if warehouse_id:
+        fulfillment_warehouse = _warehouse_or_raise(db, tenant_id=tenant.id, warehouse_id=warehouse_id)
+        if fulfillment_warehouse.status != "active":
+            raise ConflictError("Fulfillment warehouse must be active.")
+        if selected_warehouse_ids and any(candidate != fulfillment_warehouse.id for candidate in selected_warehouse_ids):
+            raise ConflictError("Selected fulfillment lines are allocated to a different warehouse.")
+    elif len(selected_warehouse_ids) == 1:
+        fulfillment_warehouse = _warehouse_or_raise(
+            db,
+            tenant_id=tenant.id,
+            warehouse_id=next(iter(selected_warehouse_ids)),
+        )
+    elif len(selected_warehouse_ids) > 1:
+        raise ConflictError("Fulfillment spans multiple warehouses. Provide a warehouse_id or split the fulfillment.")
+
+    for line, _ in selected_lines:
+        if line.allocated_warehouse_id is None and fulfillment_warehouse is not None:
+            line.allocated_warehouse_id = fulfillment_warehouse.id
+
+    fulfillment = commerce_repository.create_fulfillment(
+        db,
+        tenant_id=tenant.id,
+        order_id=order.id,
+        warehouse_id=fulfillment_warehouse.id if fulfillment_warehouse is not None else None,
+        fulfillment_number=_fulfillment_number(order, len(existing_fulfillments)),
+        status="pending_pick",
+        created_by_user_id=actor_user_id,
+        packed_at=None,
+        shipped_at=None,
+        delivered_at=None,
+    )
+    created_lines = [
+        commerce_repository.create_fulfillment_line(
+            db,
+            tenant_id=tenant.id,
+            fulfillment_id=fulfillment.id,
+            order_line_id=line.id,
+            variant_id=line.variant_id,
+            quantity=quantity,
+        )
+        for line, quantity in selected_lines
+    ]
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.fulfillment.created",
+        subject_type="commerce_fulfillment",
+        subject_id=fulfillment.id,
+        metadata={
+            "order_id": order.id,
+            "warehouse_id": fulfillment.warehouse_id,
+            "line_count": len(created_lines),
+        },
+    )
+    _outbox_fulfillment(db, tenant_id=tenant.id, fulfillment=fulfillment)
+    db.commit()
+    return _serialize_fulfillment(
+        fulfillment,
+        {fulfillment.id: [_serialize_fulfillment_line(line) for line in created_lines]},
+    )
+
+
+def update_fulfillment_status(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    fulfillment_id: str,
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    fulfillment = _fulfillment_or_raise(db, tenant_id=tenant.id, fulfillment_id=fulfillment_id)
+    if status not in FULFILLMENT_STATUSES:
+        raise ValidationError(f"Unsupported fulfillment status '{status}'.")
+    if status not in {"packed", "cancelled"}:
+        raise ValidationError("Fulfillment status updates only support 'packed' or 'cancelled'.")
+    if fulfillment.status in {"shipped", "delivered"}:
+        raise ConflictError("Shipped fulfillments must be transitioned through shipment status.")
+    if fulfillment.status == "cancelled":
+        raise ConflictError("Cancelled fulfillments cannot be changed.")
+    if status == "packed":
+        fulfillment.status = "packed"
+        fulfillment.packed_at = fulfillment.packed_at or datetime.now(tz=UTC).isoformat()
+    elif status == "cancelled":
+        fulfillment.status = "cancelled"
+
+    lines = commerce_repository.list_fulfillment_lines(db, tenant_id=tenant.id, fulfillment_ids=[fulfillment.id])
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.fulfillment.updated",
+        subject_type="commerce_fulfillment",
+        subject_id=fulfillment.id,
+        metadata={"status": fulfillment.status},
+    )
+    _outbox_fulfillment(db, tenant_id=tenant.id, fulfillment=fulfillment)
+    db.commit()
+    return _serialize_fulfillment(
+        fulfillment,
+        {fulfillment.id: [_serialize_fulfillment_line(line) for line in lines]},
+    )
+
+
+def create_shipment(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    fulfillment_id: str,
+    carrier: str,
+    service_level: str | None,
+    tracking_number: str,
+    metadata: dict[str, object],
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    fulfillment = _fulfillment_or_raise(db, tenant_id=tenant.id, fulfillment_id=fulfillment_id)
+    if fulfillment.status == "cancelled":
+        raise ConflictError("Cancelled fulfillment cannot be shipped.")
+    if commerce_repository.list_shipments(db, tenant_id=tenant.id, fulfillment_id=fulfillment.id):
+        raise ConflictError("A shipment already exists for this fulfillment.")
+
+    order = _order_or_raise(db, tenant_id=tenant.id, order_id=fulfillment.order_id)
+    order_lines = commerce_repository.list_order_lines_for_orders(db, tenant_id=tenant.id, order_ids=[order.id])
+    order_line_lookup = {line.id: line for line in order_lines}
+    fulfillment_lines = commerce_repository.list_fulfillment_lines(
+        db,
+        tenant_id=tenant.id,
+        fulfillment_ids=[fulfillment.id],
+    )
+    if not fulfillment_lines:
+        raise ConflictError("Fulfillment has no lines to ship.")
+
+    touched_variant_ids: list[str] = []
+    for line in fulfillment_lines:
+        order_line = order_line_lookup.get(line.order_line_id)
+        if order_line is None:
+            raise ConflictError("Fulfillment line references an order line that no longer exists.")
+        remaining_quantity = order_line.quantity - order_line.fulfilled_quantity
+        if line.quantity > remaining_quantity:
+            raise ConflictError("Shipment quantity exceeds the remaining order-line quantity.")
+        if fulfillment.warehouse_id:
+            stock = commerce_repository.get_warehouse_stock(
+                db,
+                tenant_id=tenant.id,
+                warehouse_id=fulfillment.warehouse_id,
+                variant_id=line.variant_id,
+            )
+            if stock is None:
+                raise ConflictError("Warehouse stock record is missing for fulfillment shipment.")
+            if stock.reserved_quantity < line.quantity or stock.on_hand_quantity < line.quantity:
+                raise ConflictError("Insufficient warehouse stock to ship the fulfillment.")
+            stock.reserved_quantity -= line.quantity
+            stock.on_hand_quantity -= line.quantity
+            commerce_repository.create_stock_ledger_entry(
+                db,
+                tenant_id=tenant.id,
+                warehouse_id=fulfillment.warehouse_id,
+                variant_id=line.variant_id,
+                entry_type="fulfillment",
+                quantity_delta=-line.quantity,
+                balance_after=stock.on_hand_quantity,
+                reserved_after=stock.reserved_quantity,
+                reference_type="commerce_fulfillment",
+                reference_id=fulfillment.id,
+                notes=f"Shipped fulfillment {fulfillment.fulfillment_number}.",
+                recorded_by_user_id=actor_user_id,
+            )
+            touched_variant_ids.append(line.variant_id)
+        order_line.fulfilled_quantity += line.quantity
+
+    if touched_variant_ids:
+        _sync_variant_inventory_from_stocks(db, tenant_id=tenant.id, variant_ids=touched_variant_ids)
+
+    shipped_at = datetime.now(tz=UTC).isoformat()
+    shipment = commerce_repository.create_shipment(
+        db,
+        tenant_id=tenant.id,
+        fulfillment_id=fulfillment.id,
+        carrier=carrier.strip(),
+        service_level=service_level.strip() if service_level else None,
+        tracking_number=tracking_number.strip().upper(),
+        status="shipped",
+        shipped_at=shipped_at,
+        delivered_at=None,
+        metadata_json=metadata,
+    )
+    fulfillment.status = "shipped"
+    fulfillment.shipped_at = shipped_at
+    _mark_order_fulfillment_state(order_lines, order)
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.shipment.created",
+        subject_type="commerce_shipment",
+        subject_id=shipment.id,
+        metadata={
+            "fulfillment_id": fulfillment.id,
+            "tracking_number": shipment.tracking_number,
+            "carrier": shipment.carrier,
+        },
+    )
+    _outbox_shipment(db, tenant_id=tenant.id, shipment=shipment)
+    _outbox_fulfillment(db, tenant_id=tenant.id, fulfillment=fulfillment)
+    db.commit()
+    return _serialize_shipment(shipment)
+
+
+def update_shipment_status(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    shipment_id: str,
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    shipment = _shipment_or_raise(db, tenant_id=tenant.id, shipment_id=shipment_id)
+    if status not in SHIPMENT_STATUSES:
+        raise ValidationError(f"Unsupported shipment status '{status}'.")
+    if status != "delivered":
+        raise ValidationError("Shipment status updates currently support only 'delivered'.")
+    if shipment.status != "shipped":
+        raise ConflictError("Only shipped shipments can be marked as delivered.")
+
+    delivered_at = datetime.now(tz=UTC).isoformat()
+    shipment.status = "delivered"
+    shipment.delivered_at = delivered_at
+    fulfillment = _fulfillment_or_raise(db, tenant_id=tenant.id, fulfillment_id=shipment.fulfillment_id)
+    fulfillment.status = "delivered"
+    fulfillment.delivered_at = delivered_at
+
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.shipment.updated",
+        subject_type="commerce_shipment",
+        subject_id=shipment.id,
+        metadata={"status": shipment.status, "tracking_number": shipment.tracking_number},
+    )
+    _outbox_shipment(db, tenant_id=tenant.id, shipment=shipment)
+    _outbox_fulfillment(db, tenant_id=tenant.id, fulfillment=fulfillment)
+    db.commit()
+    return _serialize_shipment(shipment)
+
+
+def update_order_status(
+    db: Session,
+    *,
+    tenant_slug: str,
+    actor_user_id: str,
+    order_id: str,
+    status: str,
+) -> dict[str, object]:
+    tenant = _tenant(db, tenant_slug)
+    order = _order_or_raise(db, tenant_id=tenant.id, order_id=order_id)
+    if status not in {"draft", "placed", "paid", "fulfilled", "cancelled"}:
+        raise ValidationError(f"Unsupported order status '{status}'.")
+
+    lines = commerce_repository.list_order_lines_for_orders(db, tenant_id=tenant.id, order_ids=[order.id])
+    variants = [
+        commerce_repository.get_variant(db, tenant_id=tenant.id, variant_id=line.variant_id)
+        for line in lines
+    ]
+    variant_models = [variant for variant in variants if variant is not None]
+    outstanding_quantities = {line.variant_id: max(line.quantity - line.fulfilled_quantity, 0) for line in lines}
+
+    if not order.inventory_reserved and status in {"placed", "paid", "fulfilled"}:
+        warehouse_stocks = commerce_repository.list_warehouse_stocks_for_variants(
+            db,
+            tenant_id=tenant.id,
+            variant_ids=[line.variant_id for line in lines],
+        )
+        if warehouse_stocks:
+            _reserve_order_lines_against_warehouses(
+                db,
+                tenant_id=tenant.id,
+                order=order,
+                order_lines=lines,
+                actor_user_id=actor_user_id,
+            )
+        else:
+            _reserve_inventory(variant_models, outstanding_quantities)
+        order.inventory_reserved = True
+        order.placed_at = order.placed_at or datetime.now(tz=UTC).isoformat()
+    elif order.inventory_reserved and status == "cancelled":
+        warehouse_allocated_lines = [line for line in lines if line.allocated_warehouse_id]
+        if warehouse_allocated_lines:
+            _release_order_lines_from_warehouses(
+                db,
+                tenant_id=tenant.id,
+                order=order,
+                order_lines=warehouse_allocated_lines,
+                actor_user_id=actor_user_id,
+            )
+        else:
+            _restore_inventory(variant_models, outstanding_quantities)
+        order.inventory_reserved = False
+
+    order.status = status
+    _recalculate_order_finance(db, order)
+    _audit(
+        db,
+        tenant_id=tenant.id,
+        actor_user_id=actor_user_id,
+        action="commerce.order.updated",
+        subject_type="commerce_order",
+        subject_id=order.id,
+        metadata={"status": status},
+    )
+    db.commit()
+    return _serialize_order(order, {order.id: [_serialize_order_line(line) for line in lines]})
+
+
+def load_legacy_commerce_plan() -> dict[str, object]:
+    repo_root = Path(__file__).resolve().parents[4]
+    adapter_file = repo_root / "adapters" / "legacy-kalpzero" / "commerce-catalog.yaml"
+    manifest = yaml.safe_load(adapter_file.read_text(encoding="utf-8"))
+    return {
+        "adapter_id": manifest["adapter_id"],
+        "source_root": manifest["source_root"],
+        "mode": manifest["mode"],
+        "entities": manifest["entities"],
+    }

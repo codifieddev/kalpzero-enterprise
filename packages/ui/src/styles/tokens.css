@@ -1,0 +1,13 @@
+:root {
+  --kz-ink: #102033;
+  --kz-muted: #5a6776;
+  --kz-border: rgba(16, 32, 51, 0.12);
+  --kz-surface: rgba(255, 255, 255, 0.84);
+  --kz-surface-strong: #ffffff;
+  --kz-accent: #d65d0e;
+  --kz-accent-soft: rgba(214, 93, 14, 0.14);
+  --kz-teal: #0f766e;
+  --kz-shadow: 0 24px 80px rgba(16, 32, 51, 0.12);
+  --kz-radius-xl: 28px;
+  --kz-radius-lg: 18px;
+}

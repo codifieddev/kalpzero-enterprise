@@ -1,0 +1,41 @@
+adapter_id: legacy-kalpzero
+source_root: /Users/apple/Desktop/WORK/GIT/kalpzero
+mode: one_way_import
+collections:
+  - name: commerce_catalog
+    source:
+      kind: api-route-folder
+      path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/api/products
+    canonical_target: commerce
+    action: map-to-wave1-commerce
+  - name: business_templates
+    source:
+      kind: file
+      path: /Users/apple/Desktop/WORK/GIT/kalpzero/platform/registry/modules
+    canonical_target: platform.registry
+    action: extract-and-normalize
+  - name: travel_packages
+    source:
+      kind: api-route-folder
+      path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/api/travel
+    canonical_target: travel.packages
+    action: map-to-wave1-travel
+  - name: hotel_management
+    source:
+      kind: api-route-folder
+      path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/api/travel/hotel
+    canonical_target: hotel
+    action: reconcile-duplicate-schemas
+  - name: discovery_surface
+    source:
+      kind: public-app-folder
+      path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/(public)/discover
+    canonical_target: publishing
+    action: port-patterns-only
+anti_patterns:
+  - path: /Users/apple/Desktop/WORK/GIT/kalpzero/engine/permission-engine/index.ts
+    reason: permission fallback allows access on missing spec
+  - path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/lib/jwt.ts
+    reason: default secret fallback is not enterprise-safe
+  - path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/lib/module-rules.ts
+    reason: forced module enablement breaks tenant contract integrity

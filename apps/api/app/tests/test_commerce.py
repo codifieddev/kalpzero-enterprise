@@ -1,0 +1,900 @@
+from fastapi.testclient import TestClient
+
+from app.tests.support import login, provision_tenant
+
+
+def test_commerce_pack_supports_catalog_and_order_flow(client: TestClient) -> None:
+    provision_tenant(client, tenant_slug="commerce_ops", vertical_packs=["commerce"])
+    tenant_token = login(client, email="ops@tenant.com", tenant_slug="commerce_ops")
+    headers = {"Authorization": f"Bearer {tenant_token}"}
+
+    category_response = client.post(
+        "/commerce/categories",
+        headers=headers,
+        json={
+            "name": "Footwear",
+            "slug": "footwear",
+            "description": "Retail catalog for shoes.",
+        },
+    )
+    assert category_response.status_code == 201
+    category_id = category_response.json()["id"]
+
+    product_response = client.post(
+        "/commerce/products",
+        headers=headers,
+        json={
+            "name": "KalpZero Runner",
+            "slug": "kalpzero-runner",
+            "description": "Lightweight running shoe.",
+            "category_ids": [category_id],
+            "seo_title": "KalpZero Runner Shoe",
+            "seo_description": "Performance footwear for daily runs.",
+            "status": "active",
+            "variants": [
+                {
+                    "sku": "RUN-42-BLK",
+                    "label": "Black / 42",
+                    "price_minor": 349900,
+                    "currency": "INR",
+                    "inventory_quantity": 12,
+                }
+            ],
+        },
+    )
+    assert product_response.status_code == 201
+    variant_id = product_response.json()["variants"][0]["id"]
+
+    order_response = client.post(
+        "/commerce/orders",
+        headers=headers,
+        json={
+            "customer_id": "cust_900",
+            "status": "placed",
+            "currency": "INR",
+            "lines": [{"variant_id": variant_id, "quantity": 2}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+    assert order_response.json()["total_minor"] == 699800
+    assert order_response.json()["inventory_reserved"] is True
+
+    products_response = client.get("/commerce/products", headers=headers)
+    overview_response = client.get("/commerce/overview", headers=headers)
+    assert products_response.status_code == 200
+    assert overview_response.status_code == 200
+    assert products_response.json()["products"][0]["variants"][0]["inventory_quantity"] == 10
+    assert overview_response.json()["orders"]["placed"] == 1
+
+    cancel_response = client.patch(
+        f"/commerce/orders/{order_id}/status",
+        headers=headers,
+        json={"status": "cancelled"},
+    )
+    assert cancel_response.status_code == 200
+    assert cancel_response.json()["status"] == "cancelled"
+
+    refreshed_products = client.get("/commerce/products", headers=headers)
+    assert refreshed_products.json()["products"][0]["variants"][0]["inventory_quantity"] == 12
+
+
+def test_legacy_commerce_plan_endpoint_exposes_adapter(client: TestClient) -> None:
+    provision_tenant(client, tenant_slug="commerce_imports", vertical_packs=["commerce"])
+    tenant_token = login(client, email="ops@tenant.com", tenant_slug="commerce_imports")
+    headers = {"Authorization": f"Bearer {tenant_token}"}
+
+    response = client.get("/imports/legacy/commerce-plan", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["adapter_id"] == "legacy-kalpzero-commerce"
+    assert any(entity["canonical_entity"] == "commerce.product" for entity in payload["entities"])
+
+
+def test_commerce_pack_supports_attribute_taxonomy_and_attributed_products(client: TestClient) -> None:
+    provision_tenant(client, tenant_slug="commerce_taxonomy", vertical_packs=["commerce"])
+    tenant_token = login(client, email="ops@tenant.com", tenant_slug="commerce_taxonomy")
+    headers = {"Authorization": f"Bearer {tenant_token}"}
+
+    category_response = client.post(
+        "/commerce/categories",
+        headers=headers,
+        json={
+            "name": "Apparel",
+            "slug": "apparel",
+            "description": "Wearables and clothing.",
+        },
+    )
+    assert category_response.status_code == 201
+    category_id = category_response.json()["id"]
+
+    material_response = client.post(
+        "/commerce/attributes",
+        headers=headers,
+        json={
+            "code": "material",
+            "slug": "material",
+            "label": "Material",
+            "value_type": "single_select",
+            "scope": "product",
+            "options": [
+                {"value": "cotton", "label": "Cotton"},
+                {"value": "linen", "label": "Linen"},
+            ],
+            "is_required": True,
+            "is_filterable": True,
+        },
+    )
+    assert material_response.status_code == 201
+    material_id = material_response.json()["id"]
+
+    color_response = client.post(
+        "/commerce/attributes",
+        headers=headers,
+        json={
+            "code": "color",
+            "slug": "color",
+            "label": "Color",
+            "value_type": "single_select",
+            "scope": "variant",
+            "options": [
+                {"value": "black", "label": "Black"},
+                {"value": "white", "label": "White"},
+            ],
+            "is_required": True,
+            "is_filterable": True,
+            "is_variation_axis": True,
+            "vertical_bindings": ["commerce", "real_estate"],
+        },
+    )
+    assert color_response.status_code == 201
+    color_id = color_response.json()["id"]
+
+    size_response = client.post(
+        "/commerce/attributes",
+        headers=headers,
+        json={
+            "code": "size",
+            "slug": "size",
+            "label": "Size",
+            "value_type": "single_select",
+            "scope": "variant",
+            "options": [
+                {"value": "m", "label": "M"},
+                {"value": "l", "label": "L"},
+            ],
+            "is_required": True,
+            "is_variation_axis": True,
+        },
+    )
+    assert size_response.status_code == 201
+    size_id = size_response.json()["id"]
+
+    attribute_set_response = client.post(
+        "/commerce/attribute-sets",
+        headers=headers,
+        json={
+            "name": "Apparel Core",
+            "slug": "apparel-core",
+            "description": "Reusable attribute set for apparel products.",
+            "attribute_ids": [material_id, color_id, size_id],
+            "vertical_bindings": ["commerce", "travel"],
+        },
+    )
+    assert attribute_set_response.status_code == 201
+    attribute_set_id = attribute_set_response.json()["id"]
+
+    product_response = client.post(
+        "/commerce/products",
+        headers=headers,
+        json={
+            "name": "KalpZero Polo",
+            "slug": "kalpzero-polo",
+            "description": "Structured polo shirt for multi-brand catalogs.",
+            "attribute_set_id": attribute_set_id,
+            "category_ids": [category_id],
+            "seo_title": "KalpZero Polo Shirt",
+            "seo_description": "Reusable attributed apparel product.",
+            "status": "active",
+            "product_attributes": [{"attribute_id": material_id, "value": "cotton"}],
+            "variants": [
+                {
+                    "sku": "POLO-BLK-M",
+                    "label": "Black / M",
+                    "price_minor": 219900,
+                    "currency": "INR",
+                    "inventory_quantity": 8,
+                    "attribute_values": [
+                        {"attribute_id": color_id, "value": "black"},
+                        {"attribute_id": size_id, "value": "m"},
+                    ],
+                },
+                {
+                    "sku": "POLO-WHT-L",
+                    "label": "White / L",
+                    "price_minor": 229900,
+                    "currency": "INR",
+                    "inventory_quantity": 5,
+                    "attribute_values": [
+                        {"attribute_id": color_id, "value": "white"},
+                        {"attribute_id": size_id, "value": "l"},
+                    ],
+                },
+            ],
+        },
+    )
+
+    assert product_response.status_code == 201
+    payload = product_response.json()
+    assert payload["attribute_set_id"] == attribute_set_id
+    assert payload["product_attributes"][0]["attribute_id"] == material_id
+    assert len(payload["variants"]) == 2
+    assert len(payload["variants"][0]["attribute_values"]) == 2
+
+    attributes_response = client.get("/commerce/attributes", headers=headers)
+    attribute_sets_response = client.get("/commerce/attribute-sets", headers=headers)
+    products_response = client.get("/commerce/products", headers=headers)
+    overview_response = client.get("/commerce/overview", headers=headers)
+
+    assert attributes_response.status_code == 200
+    assert attribute_sets_response.status_code == 200
+    assert products_response.status_code == 200
+    assert overview_response.status_code == 200
+    assert len(attributes_response.json()["attributes"]) == 3
+    assert len(attribute_sets_response.json()["attribute_sets"]) == 1
+    assert products_response.json()["products"][0]["attribute_set_id"] == attribute_set_id
+    assert overview_response.json()["attributes"] == 3
+    assert overview_response.json()["attribute_sets"] == 1
+
+
+def test_commerce_attribute_validation_blocks_missing_required_variant_axis(client: TestClient) -> None:
+    provision_tenant(client, tenant_slug="commerce_attr_validation", vertical_packs=["commerce"])
+    tenant_token = login(client, email="ops@tenant.com", tenant_slug="commerce_attr_validation")
+    headers = {"Authorization": f"Bearer {tenant_token}"}
+
+    category_response = client.post(
+        "/commerce/categories",
+        headers=headers,
+        json={
+            "name": "Accessories",
+            "slug": "accessories",
+            "description": "Accessory catalog.",
+        },
+    )
+    assert category_response.status_code == 201
+    category_id = category_response.json()["id"]
+
+    style_response = client.post(
+        "/commerce/attributes",
+        headers=headers,
+        json={
+            "code": "style",
+            "slug": "style",
+            "label": "Style",
+            "value_type": "single_select",
+            "scope": "variant",
+            "options": [
+                {"value": "classic", "label": "Classic"},
+                {"value": "modern", "label": "Modern"},
+            ],
+            "is_required": True,
+            "is_variation_axis": True,
+        },
+    )
+    assert style_response.status_code == 201
+    style_id = style_response.json()["id"]
+
+    finish_response = client.post(
+        "/commerce/attributes",
+        headers=headers,
+        json={
+            "code": "finish",
+            "slug": "finish",
+            "label": "Finish",
+            "value_type": "single_select",
+            "scope": "variant",
+            "options": [
+                {"value": "matte", "label": "Matte"},
+                {"value": "gloss", "label": "Gloss"},
+            ],
+            "is_required": True,
+            "is_variation_axis": True,
+        },
+    )
+    assert finish_response.status_code == 201
+    finish_id = finish_response.json()["id"]
+
+    attribute_set_response = client.post(
+        "/commerce/attribute-sets",
+        headers=headers,
+        json={
+            "name": "Accessory Variant Core",
+            "slug": "accessory-variant-core",
+            "attribute_ids": [style_id, finish_id],
+        },
+    )
+    assert attribute_set_response.status_code == 201
+    attribute_set_id = attribute_set_response.json()["id"]
+
+    bad_product_response = client.post(
+        "/commerce/products",
+        headers=headers,
+        json={
+            "name": "KalpZero Lamp",
+            "slug": "kalpzero-lamp",
+            "category_ids": [category_id],
+            "attribute_set_id": attribute_set_id,
+            "status": "active",
+            "variants": [
+                {
+                    "sku": "LAMP-CLASSIC",
+                    "label": "Classic",
+                    "price_minor": 559900,
+                    "currency": "INR",
+                    "inventory_quantity": 3,
+                    "attribute_values": [
+                        {"attribute_id": style_id, "value": "classic"},
+                    ],
+                }
+            ],
+        },
+    )
+
+    assert bad_product_response.status_code == 400
+    assert "Required variant attribute 'finish' is missing" in bad_product_response.json()["detail"]
+
+
+def test_commerce_pack_supports_brands_vendors_collections_and_product_linkage(client: TestClient) -> None:
+    provision_tenant(client, tenant_slug="commerce_governance", vertical_packs=["commerce"])
+    tenant_token = login(client, email="ops@tenant.com", tenant_slug="commerce_governance")
+    headers = {"Authorization": f"Bearer {tenant_token}"}
+
+    category_response = client.post(
+        "/commerce/categories",
+        headers=headers,
+        json={
+            "name": "Home Decor",
+            "slug": "home-decor",
+            "description": "Decor and curated home catalog.",
+        },
+    )
+    assert category_response.status_code == 201
+    category_id = category_response.json()["id"]
+
+    brand_response = client.post(
+        "/commerce/brands",
+        headers=headers,
+        json={
+            "name": "Kalp Living",
+            "slug": "kalp-living",
+            "code": "kalp-living",
+            "description": "House brand for premium decor.",
+        },
+    )
+    assert brand_response.status_code == 201
+    brand_id = brand_response.json()["id"]
+
+    vendor_response = client.post(
+        "/commerce/vendors",
+        headers=headers,
+        json={
+            "name": "Aster Crafts",
+            "slug": "aster-crafts",
+            "code": "aster-crafts",
+            "description": "Regional manufacturing partner.",
+            "contact_name": "Riya Sethi",
+            "contact_email": "riya@astercrafts.example",
+            "contact_phone": "+919999900001",
+        },
+    )
+    assert vendor_response.status_code == 201
+    vendor_id = vendor_response.json()["id"]
+
+    collection_response = client.post(
+        "/commerce/collections",
+        headers=headers,
+        json={
+            "name": "Festive Edit",
+            "slug": "festive-edit",
+            "description": "Seasonal merchandising collection.",
+            "sort_order": 10,
+        },
+    )
+    assert collection_response.status_code == 201
+    collection_id = collection_response.json()["id"]
+
+    product_response = client.post(
+        "/commerce/products",
+        headers=headers,
+        json={
+            "name": "Brass Lantern",
+            "slug": "brass-lantern",
+            "description": "Statement lantern for festive spaces.",
+            "brand_id": brand_id,
+            "vendor_id": vendor_id,
+            "collection_ids": [collection_id],
+            "category_ids": [category_id],
+            "seo_title": "Brass Lantern Decor",
+            "seo_description": "Merchant-ready decor product with governance links.",
+            "status": "active",
+            "variants": [
+                {
+                    "sku": "LANTERN-STD",
+                    "label": "Standard",
+                    "price_minor": 459900,
+                    "currency": "INR",
+                    "inventory_quantity": 4,
+                }
+            ],
+        },
+    )
+
+    assert product_response.status_code == 201
+    payload = product_response.json()
+    assert payload["brand_id"] == brand_id
+    assert payload["vendor_id"] == vendor_id
+    assert payload["collection_ids"] == [collection_id]
+
+    overview_response = client.get("/commerce/overview", headers=headers)
+    brands_response = client.get("/commerce/brands", headers=headers)
+    vendors_response = client.get("/commerce/vendors", headers=headers)
+    collections_response = client.get("/commerce/collections", headers=headers)
+    products_response = client.get("/commerce/products", headers=headers)
+
+    assert overview_response.status_code == 200
+    assert brands_response.status_code == 200
+    assert vendors_response.status_code == 200
+    assert collections_response.status_code == 200
+    assert products_response.status_code == 200
+    assert overview_response.json()["brands"] == 1
+    assert overview_response.json()["vendors"] == 1
+    assert overview_response.json()["collections"] == 1
+    assert products_response.json()["products"][0]["brand_id"] == brand_id
+    assert products_response.json()["products"][0]["vendor_id"] == vendor_id
+    assert products_response.json()["products"][0]["collection_ids"] == [collection_id]
+
+
+def test_commerce_pack_supports_price_lists_coupons_and_tax_profiles(client: TestClient) -> None:
+    provision_tenant(client, tenant_slug="commerce_pricing", vertical_packs=["commerce"])
+    tenant_token = login(client, email="ops@tenant.com", tenant_slug="commerce_pricing")
+    headers = {"Authorization": f"Bearer {tenant_token}"}
+
+    category_response = client.post(
+        "/commerce/categories",
+        headers=headers,
+        json={
+            "name": "Electronics",
+            "slug": "electronics",
+            "description": "Retail electronics catalog.",
+        },
+    )
+    assert category_response.status_code == 201
+    category_id = category_response.json()["id"]
+
+    product_response = client.post(
+        "/commerce/products",
+        headers=headers,
+        json={
+            "name": "KalpZero Speaker",
+            "slug": "kalpzero-speaker",
+            "description": "Portable speaker for pricing tests.",
+            "category_ids": [category_id],
+            "status": "active",
+            "variants": [
+                {
+                    "sku": "SPK-STD",
+                    "label": "Standard",
+                    "price_minor": 10000,
+                    "currency": "INR",
+                    "inventory_quantity": 10,
+                }
+            ],
+        },
+    )
+    assert product_response.status_code == 201
+    variant_id = product_response.json()["variants"][0]["id"]
+
+    tax_profile_response = client.post(
+        "/commerce/tax-profiles",
+        headers=headers,
+        json={
+            "name": "GST 18",
+            "code": "gst-18",
+            "description": "Standard GST rate.",
+            "prices_include_tax": False,
+            "rules": [
+                {"label": "CGST", "rate_basis_points": 900},
+                {"label": "SGST", "rate_basis_points": 900},
+            ],
+        },
+    )
+    assert tax_profile_response.status_code == 201
+    tax_profile_id = tax_profile_response.json()["id"]
+
+    price_list_response = client.post(
+        "/commerce/price-lists",
+        headers=headers,
+        json={
+            "name": "B2B Wholesale",
+            "slug": "b2b-wholesale",
+            "currency": "INR",
+            "customer_segment": "b2b",
+            "description": "Segment pricing for trade accounts.",
+            "items": [{"variant_id": variant_id, "price_minor": 8000}],
+        },
+    )
+    assert price_list_response.status_code == 201
+    price_list_id = price_list_response.json()["id"]
+    assert price_list_response.json()["items"][0]["price_minor"] == 8000
+
+    coupon_response = client.post(
+        "/commerce/coupons",
+        headers=headers,
+        json={
+            "code": "WELCOME10",
+            "description": "Ten percent launch discount.",
+            "discount_type": "percent",
+            "discount_value": 1000,
+            "minimum_subtotal_minor": 10000,
+            "maximum_discount_minor": 2000,
+            "applicable_category_ids": [category_id],
+        },
+    )
+    assert coupon_response.status_code == 201
+    assert coupon_response.json()["code"] == "WELCOME10"
+
+    order_response = client.post(
+        "/commerce/orders",
+        headers=headers,
+        json={
+            "customer_id": "cust_pricing_01",
+            "price_list_id": price_list_id,
+            "tax_profile_id": tax_profile_id,
+            "coupon_code": "welcome10",
+            "status": "placed",
+            "currency": "INR",
+            "lines": [{"variant_id": variant_id, "quantity": 2}],
+        },
+    )
+    assert order_response.status_code == 201
+    payload = order_response.json()
+    assert payload["subtotal_minor"] == 16000
+    assert payload["discount_minor"] == 1600
+    assert payload["tax_minor"] == 2592
+    assert payload["total_minor"] == 16992
+    assert payload["coupon_code"] == "WELCOME10"
+    assert payload["price_list_id"] == price_list_id
+    assert payload["tax_profile_id"] == tax_profile_id
+    assert payload["lines"][0]["unit_price_minor"] == 8000
+    assert payload["inventory_reserved"] is True
+
+    overview_response = client.get("/commerce/overview", headers=headers)
+    tax_profiles_response = client.get("/commerce/tax-profiles", headers=headers)
+    price_lists_response = client.get("/commerce/price-lists", headers=headers)
+    coupons_response = client.get("/commerce/coupons", headers=headers)
+
+    assert overview_response.status_code == 200
+    assert tax_profiles_response.status_code == 200
+    assert price_lists_response.status_code == 200
+    assert coupons_response.status_code == 200
+    assert overview_response.json()["tax_profiles"] == 1
+    assert overview_response.json()["price_lists"] == 1
+    assert overview_response.json()["coupons"] == 1
+    assert price_lists_response.json()["price_lists"][0]["items"][0]["variant_id"] == variant_id
+
+
+def test_commerce_pack_supports_payment_refund_invoice_and_finance_detail(client: TestClient) -> None:
+    provision_tenant(client, tenant_slug="commerce_finance", vertical_packs=["commerce"])
+    tenant_token = login(client, email="ops@tenant.com", tenant_slug="commerce_finance")
+    headers = {"Authorization": f"Bearer {tenant_token}"}
+
+    category_response = client.post(
+        "/commerce/categories",
+        headers=headers,
+        json={
+            "name": "Accessories",
+            "slug": "accessories-finance",
+            "description": "Commerce finance test catalog.",
+        },
+    )
+    assert category_response.status_code == 201
+    category_id = category_response.json()["id"]
+
+    product_response = client.post(
+        "/commerce/products",
+        headers=headers,
+        json={
+            "name": "KalpZero Travel Bag",
+            "slug": "kalpzero-travel-bag",
+            "description": "Soft goods used for finance flow tests.",
+            "category_ids": [category_id],
+            "status": "active",
+            "variants": [
+                {
+                    "sku": "BAG-STD",
+                    "label": "Standard",
+                    "price_minor": 20000,
+                    "currency": "INR",
+                    "inventory_quantity": 6,
+                }
+            ],
+        },
+    )
+    assert product_response.status_code == 201
+    variant_id = product_response.json()["variants"][0]["id"]
+
+    order_response = client.post(
+        "/commerce/orders",
+        headers=headers,
+        json={
+            "customer_id": "cust_finance_01",
+            "status": "placed",
+            "currency": "INR",
+            "lines": [{"variant_id": variant_id, "quantity": 1}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+    assert order_response.json()["payment_status"] == "pending"
+    assert order_response.json()["balance_minor"] == 20000
+
+    authorized_payment_response = client.post(
+        f"/commerce/orders/{order_id}/payments",
+        headers=headers,
+        json={
+            "amount_minor": 20000,
+            "provider": "razorpay",
+            "payment_method": "card",
+            "status": "authorized",
+            "reference": "auth_001",
+        },
+    )
+    assert authorized_payment_response.status_code == 201
+    assert authorized_payment_response.json()["payment_status"] == "authorized"
+    assert authorized_payment_response.json()["paid_minor"] == 0
+    assert authorized_payment_response.json()["balance_minor"] == 20000
+
+    captured_payment_response = client.post(
+        f"/commerce/orders/{order_id}/payments",
+        headers=headers,
+        json={
+            "amount_minor": 20000,
+            "provider": "razorpay",
+            "payment_method": "card",
+            "status": "captured",
+            "reference": "cap_001",
+        },
+    )
+    assert captured_payment_response.status_code == 201
+    payload = captured_payment_response.json()
+    assert payload["payment_status"] == "paid"
+    assert payload["status"] == "paid"
+    assert payload["paid_minor"] == 20000
+    assert payload["balance_minor"] == 0
+    captured_payment = next(payment for payment in payload["payments"] if payment["status"] == "captured")
+
+    invoice_response = client.post(f"/commerce/orders/{order_id}/issue-invoice", headers=headers)
+    assert invoice_response.status_code == 200
+    assert invoice_response.json()["invoice_number"].startswith("INV-")
+    assert invoice_response.json()["invoice_issued_at"] is not None
+    assert len(invoice_response.json()["invoices"]) == 1
+
+    refund_response = client.post(
+        f"/commerce/orders/{order_id}/refunds",
+        headers=headers,
+        json={
+            "payment_id": captured_payment["id"],
+            "amount_minor": 3000,
+            "reason": "Damaged shipment compensation",
+            "reference": "refund_001",
+        },
+    )
+    assert refund_response.status_code == 201
+    assert refund_response.json()["payment_status"] == "partially_refunded"
+    assert refund_response.json()["paid_minor"] == 20000
+    assert refund_response.json()["refunded_minor"] == 3000
+    assert refund_response.json()["balance_minor"] == 0
+    assert len(refund_response.json()["refunds"]) == 1
+
+    finance_detail_response = client.get(f"/commerce/orders/{order_id}/finance", headers=headers)
+    payments_response = client.get("/commerce/payments", headers=headers)
+    refunds_response = client.get("/commerce/refunds", headers=headers)
+    invoices_response = client.get("/commerce/invoices", headers=headers)
+    overview_response = client.get("/commerce/overview", headers=headers)
+
+    assert finance_detail_response.status_code == 200
+    assert payments_response.status_code == 200
+    assert refunds_response.status_code == 200
+    assert invoices_response.status_code == 200
+    assert overview_response.status_code == 200
+    assert len(finance_detail_response.json()["payments"]) == 2
+    assert len(finance_detail_response.json()["refunds"]) == 1
+    assert len(finance_detail_response.json()["invoices"]) == 1
+    assert overview_response.json()["payments"] == 2
+    assert overview_response.json()["refunds"] == 1
+    assert overview_response.json()["invoices"] == 1
+    assert overview_response.json()["order_payment_statuses"]["partially_refunded"] == 1
+
+
+def test_commerce_pack_supports_warehouse_stock_fulfillment_and_shipment_flow(client: TestClient) -> None:
+    provision_tenant(client, tenant_slug="commerce_ops_extended", vertical_packs=["commerce"])
+    tenant_token = login(client, email="ops@tenant.com", tenant_slug="commerce_ops_extended")
+    headers = {"Authorization": f"Bearer {tenant_token}"}
+
+    category_response = client.post(
+        "/commerce/categories",
+        headers=headers,
+        json={
+            "name": "Electronics",
+            "slug": "electronics",
+            "description": "Devices and accessories.",
+        },
+    )
+    assert category_response.status_code == 201
+    category_id = category_response.json()["id"]
+
+    product_response = client.post(
+        "/commerce/products",
+        headers=headers,
+        json={
+            "name": "KalpZero Speaker",
+            "slug": "kalpzero-speaker",
+            "description": "Portable speaker for multi-channel commerce.",
+            "category_ids": [category_id],
+            "seo_title": "KalpZero Speaker",
+            "seo_description": "Portable speaker inventory test.",
+            "status": "active",
+            "variants": [
+                {
+                    "sku": "SPK-BLK-01",
+                    "label": "Black",
+                    "price_minor": 899900,
+                    "currency": "INR",
+                    "inventory_quantity": 0,
+                }
+            ],
+        },
+    )
+    assert product_response.status_code == 201
+    variant_id = product_response.json()["variants"][0]["id"]
+
+    warehouse_response = client.post(
+        "/commerce/warehouses",
+        headers=headers,
+        json={
+            "name": "Primary DC",
+            "slug": "primary-dc",
+            "code": "PDC",
+            "city": "Jaipur",
+            "country": "India",
+            "status": "active",
+            "is_default": True,
+        },
+    )
+    assert warehouse_response.status_code == 201
+    warehouse_id = warehouse_response.json()["id"]
+    assert warehouse_response.json()["is_default"] is True
+
+    stock_adjustment_response = client.post(
+        f"/commerce/warehouses/{warehouse_id}/stock-adjustments",
+        headers=headers,
+        json={
+            "variant_id": variant_id,
+            "quantity_delta": 20,
+            "notes": "Opening stock",
+            "low_stock_threshold": 5,
+        },
+    )
+    assert stock_adjustment_response.status_code == 201
+    assert stock_adjustment_response.json()["on_hand_quantity"] == 20
+    assert stock_adjustment_response.json()["available_quantity"] == 20
+
+    products_response = client.get("/commerce/products", headers=headers)
+    assert products_response.status_code == 200
+    assert products_response.json()["products"][0]["variants"][0]["inventory_quantity"] == 20
+
+    order_response = client.post(
+        "/commerce/orders",
+        headers=headers,
+        json={
+            "customer_id": "cust_ops_001",
+            "status": "placed",
+            "currency": "INR",
+            "lines": [{"variant_id": variant_id, "quantity": 3}],
+        },
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+    assert order_response.json()["inventory_reserved"] is True
+    assert order_response.json()["lines"][0]["allocated_warehouse_id"] == warehouse_id
+    assert order_response.json()["lines"][0]["fulfilled_quantity"] == 0
+
+    stock_levels_after_order = client.get("/commerce/stock-levels", headers=headers)
+    assert stock_levels_after_order.status_code == 200
+    stock_level = stock_levels_after_order.json()["stock_levels"][0]
+    assert stock_level["on_hand_quantity"] == 20
+    assert stock_level["reserved_quantity"] == 3
+    assert stock_level["available_quantity"] == 17
+
+    fulfillment_response = client.post(
+        f"/commerce/orders/{order_id}/fulfillments",
+        headers=headers,
+        json={
+            "lines": [
+                {
+                    "order_line_id": order_response.json()["lines"][0]["id"],
+                    "quantity": 3,
+                }
+            ]
+        },
+    )
+    assert fulfillment_response.status_code == 201
+    fulfillment_id = fulfillment_response.json()["id"]
+    assert fulfillment_response.json()["status"] == "pending_pick"
+
+    pack_response = client.patch(
+        f"/commerce/fulfillments/{fulfillment_id}/status",
+        headers=headers,
+        json={"status": "packed"},
+    )
+    assert pack_response.status_code == 200
+    assert pack_response.json()["status"] == "packed"
+    assert pack_response.json()["packed_at"] is not None
+
+    shipment_response = client.post(
+        f"/commerce/fulfillments/{fulfillment_id}/shipments",
+        headers=headers,
+        json={
+            "carrier": "Delhivery",
+            "service_level": "express",
+            "tracking_number": "trk-001",
+            "metadata": {"awb": "AWB001"},
+        },
+    )
+    assert shipment_response.status_code == 201
+    shipment_id = shipment_response.json()["id"]
+    assert shipment_response.json()["status"] == "shipped"
+
+    stock_levels_after_shipment = client.get("/commerce/stock-levels", headers=headers)
+    assert stock_levels_after_shipment.status_code == 200
+    stock_level_after_shipment = stock_levels_after_shipment.json()["stock_levels"][0]
+    assert stock_level_after_shipment["on_hand_quantity"] == 17
+    assert stock_level_after_shipment["reserved_quantity"] == 0
+    assert stock_level_after_shipment["available_quantity"] == 17
+
+    order_after_shipment = client.get("/commerce/orders", headers=headers)
+    assert order_after_shipment.status_code == 200
+    assert order_after_shipment.json()["orders"][0]["lines"][0]["fulfilled_quantity"] == 3
+    assert order_after_shipment.json()["orders"][0]["status"] == "fulfilled"
+
+    deliver_response = client.patch(
+        f"/commerce/shipments/{shipment_id}/status",
+        headers=headers,
+        json={"status": "delivered"},
+    )
+    assert deliver_response.status_code == 200
+    assert deliver_response.json()["status"] == "delivered"
+    assert deliver_response.json()["delivered_at"] is not None
+
+    fulfillments_response = client.get("/commerce/fulfillments", headers=headers)
+    shipments_response = client.get("/commerce/shipments", headers=headers)
+    stock_ledger_response = client.get("/commerce/stock-ledger", headers=headers)
+    overview_response = client.get("/commerce/overview", headers=headers)
+
+    assert fulfillments_response.status_code == 200
+    assert shipments_response.status_code == 200
+    assert stock_ledger_response.status_code == 200
+    assert overview_response.status_code == 200
+    assert fulfillments_response.json()["fulfillments"][0]["status"] == "delivered"
+    assert shipments_response.json()["shipments"][0]["status"] == "delivered"
+    assert len(stock_ledger_response.json()["entries"]) == 3
+    assert {entry["entry_type"] for entry in stock_ledger_response.json()["entries"]} == {
+        "restock",
+        "reservation",
+        "fulfillment",
+    }
+    assert overview_response.json()["warehouses"] == 1
+    assert overview_response.json()["stock_levels"] == 1
+    assert overview_response.json()["fulfillments"]["delivered"] == 1
+    assert overview_response.json()["shipments"]["delivered"] == 1

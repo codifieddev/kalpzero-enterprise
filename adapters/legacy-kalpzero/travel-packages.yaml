@@ -1,0 +1,57 @@
+adapter_id: legacy-kalpzero-travel
+source_root: /Users/apple/Desktop/WORK/GIT/kalpzero
+mode: one_way_import
+entities:
+  - source_entity: travel_packages
+    source_path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/app/api/travel/packages
+    canonical_entity: travel.package
+    dedupe_keys:
+      - tenant_slug
+      - slug
+    field_mappings:
+      - source: title
+        target: title
+      - source: slug
+        target: slug
+      - source: destination
+        target: destination_city
+      - source: price.amount
+        target: base_price_minor
+      - source: price.currency
+        target: currency
+      - source: status
+        target: status
+  - source_entity: travel_package_itinerary
+    source_path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/lib/contracts/travel.ts
+    canonical_entity: travel.itinerary_day
+    dedupe_keys:
+      - tenant_slug
+      - package_slug
+      - dayNumber
+    field_mappings:
+      - source: itinerary.dayNumber
+        target: day_number
+      - source: itinerary.title
+        target: title
+      - source: itinerary.description
+        target: summary
+      - source: itinerary.hotelStays[].hotelRef
+        target: hotel_ref_id
+      - source: itinerary.activities[].activityRef
+        target: activity_ref_ids
+      - source: itinerary.transfers[].id
+        target: transfer_ref_ids
+  - source_entity: travel_package_availability
+    source_path: /Users/apple/Desktop/WORK/GIT/kalpzero/src/lib/contracts/travel.ts
+    canonical_entity: travel.departure
+    dedupe_keys:
+      - tenant_slug
+      - package_slug
+      - departure_date
+    field_mappings:
+      - source: availability.fixedDepartureDates[]
+        target: departure_date
+      - source: tripDuration
+        target: return_date
+      - source: price.amount
+        target: price_override_minor

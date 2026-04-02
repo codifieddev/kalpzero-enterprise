@@ -1,0 +1,38 @@
+adapter_id: external-template
+source_type: postgres
+owner: platform-migration
+vertical_pack: commerce
+connection_profile_key: replace-with-secret-reference
+entities:
+  - source_entity: products
+    canonical_entity: commerce.product
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - sku
+    field_mappings:
+      - source: name
+        target: name
+      - source: slug
+        target: slug
+      - source: sale_price
+        target: variants[0].price_minor
+    validation:
+      required_fields:
+        - name
+        - slug
+      reject_if:
+        - sale_price < 0
+  - source_entity: orders
+    canonical_entity: commerce.order
+    source_identity_field: id
+    dedupe_keys:
+      - tenant_id
+      - external_order_number
+    validation:
+      required_fields:
+        - customer_id
+        - total_minor
+mode: one_way_import
+supports_dry_run: true
+supports_idempotency: true

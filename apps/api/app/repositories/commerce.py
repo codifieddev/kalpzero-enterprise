@@ -1,0 +1,1277 @@
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.models import (
+    CommerceAttributeModel,
+    CommerceAttributeSetModel,
+    CommerceBrandModel,
+    CommerceCategoryModel,
+    CommerceCollectionModel,
+    CommerceCouponModel,
+    CommerceFulfillmentLineModel,
+    CommerceFulfillmentModel,
+    CommerceInvoiceModel,
+    CommerceOrderLineModel,
+    CommerceOrderModel,
+    CommercePaymentModel,
+    CommercePriceListItemModel,
+    CommercePriceListModel,
+    CommerceProductAttributeValueModel,
+    CommerceProductModel,
+    CommerceRefundModel,
+    CommerceShipmentModel,
+    CommerceStockLedgerEntryModel,
+    CommerceTaxProfileModel,
+    CommerceVariantModel,
+    CommerceVariantAttributeValueModel,
+    CommerceVendorModel,
+    CommerceWarehouseModel,
+    CommerceWarehouseStockModel,
+)
+
+
+def list_categories(db: Session, *, tenant_id: str) -> list[CommerceCategoryModel]:
+    query = select(CommerceCategoryModel).where(CommerceCategoryModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceCategoryModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_category(db: Session, *, tenant_id: str, category_id: str) -> CommerceCategoryModel | None:
+    query = select(CommerceCategoryModel).where(
+        CommerceCategoryModel.tenant_id == tenant_id,
+        CommerceCategoryModel.id == category_id,
+    )
+    return db.scalar(query)
+
+
+def find_category_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommerceCategoryModel | None:
+    query = select(CommerceCategoryModel).where(
+        CommerceCategoryModel.tenant_id == tenant_id,
+        CommerceCategoryModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def create_category(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    description: str | None,
+    parent_category_id: str | None,
+) -> CommerceCategoryModel:
+    model = CommerceCategoryModel(
+        tenant_id=tenant_id,
+        name=name,
+        slug=slug,
+        description=description,
+        parent_category_id=parent_category_id,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_brands(db: Session, *, tenant_id: str) -> list[CommerceBrandModel]:
+    query = select(CommerceBrandModel).where(CommerceBrandModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceBrandModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_brand(db: Session, *, tenant_id: str, brand_id: str) -> CommerceBrandModel | None:
+    query = select(CommerceBrandModel).where(
+        CommerceBrandModel.tenant_id == tenant_id,
+        CommerceBrandModel.id == brand_id,
+    )
+    return db.scalar(query)
+
+
+def find_brand_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommerceBrandModel | None:
+    query = select(CommerceBrandModel).where(
+        CommerceBrandModel.tenant_id == tenant_id,
+        CommerceBrandModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def find_brand_by_code(db: Session, *, tenant_id: str, code: str) -> CommerceBrandModel | None:
+    query = select(CommerceBrandModel).where(
+        CommerceBrandModel.tenant_id == tenant_id,
+        CommerceBrandModel.code == code,
+    )
+    return db.scalar(query)
+
+
+def create_brand(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    code: str,
+    description: str | None,
+    status: str,
+) -> CommerceBrandModel:
+    model = CommerceBrandModel(
+        tenant_id=tenant_id,
+        name=name,
+        slug=slug,
+        code=code,
+        description=description,
+        status=status,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_vendors(db: Session, *, tenant_id: str) -> list[CommerceVendorModel]:
+    query = select(CommerceVendorModel).where(CommerceVendorModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceVendorModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_vendor(db: Session, *, tenant_id: str, vendor_id: str) -> CommerceVendorModel | None:
+    query = select(CommerceVendorModel).where(
+        CommerceVendorModel.tenant_id == tenant_id,
+        CommerceVendorModel.id == vendor_id,
+    )
+    return db.scalar(query)
+
+
+def find_vendor_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommerceVendorModel | None:
+    query = select(CommerceVendorModel).where(
+        CommerceVendorModel.tenant_id == tenant_id,
+        CommerceVendorModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def find_vendor_by_code(db: Session, *, tenant_id: str, code: str) -> CommerceVendorModel | None:
+    query = select(CommerceVendorModel).where(
+        CommerceVendorModel.tenant_id == tenant_id,
+        CommerceVendorModel.code == code,
+    )
+    return db.scalar(query)
+
+
+def create_vendor(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    code: str,
+    description: str | None,
+    contact_name: str | None,
+    contact_email: str | None,
+    contact_phone: str | None,
+    status: str,
+) -> CommerceVendorModel:
+    model = CommerceVendorModel(
+        tenant_id=tenant_id,
+        name=name,
+        slug=slug,
+        code=code,
+        description=description,
+        contact_name=contact_name,
+        contact_email=contact_email,
+        contact_phone=contact_phone,
+        status=status,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_collections(db: Session, *, tenant_id: str) -> list[CommerceCollectionModel]:
+    query = select(CommerceCollectionModel).where(CommerceCollectionModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceCollectionModel.sort_order.asc(), CommerceCollectionModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def list_collections_by_ids(db: Session, *, tenant_id: str, collection_ids: list[str]) -> list[CommerceCollectionModel]:
+    if not collection_ids:
+        return []
+    query = select(CommerceCollectionModel).where(
+        CommerceCollectionModel.tenant_id == tenant_id,
+        CommerceCollectionModel.id.in_(collection_ids),
+    )
+    return list(db.scalars(query))
+
+
+def get_collection(db: Session, *, tenant_id: str, collection_id: str) -> CommerceCollectionModel | None:
+    query = select(CommerceCollectionModel).where(
+        CommerceCollectionModel.tenant_id == tenant_id,
+        CommerceCollectionModel.id == collection_id,
+    )
+    return db.scalar(query)
+
+
+def find_collection_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommerceCollectionModel | None:
+    query = select(CommerceCollectionModel).where(
+        CommerceCollectionModel.tenant_id == tenant_id,
+        CommerceCollectionModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def create_collection(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    description: str | None,
+    status: str,
+    sort_order: int,
+) -> CommerceCollectionModel:
+    model = CommerceCollectionModel(
+        tenant_id=tenant_id,
+        name=name,
+        slug=slug,
+        description=description,
+        status=status,
+        sort_order=sort_order,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_tax_profiles(db: Session, *, tenant_id: str) -> list[CommerceTaxProfileModel]:
+    query = select(CommerceTaxProfileModel).where(CommerceTaxProfileModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceTaxProfileModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_tax_profile(db: Session, *, tenant_id: str, tax_profile_id: str) -> CommerceTaxProfileModel | None:
+    query = select(CommerceTaxProfileModel).where(
+        CommerceTaxProfileModel.tenant_id == tenant_id,
+        CommerceTaxProfileModel.id == tax_profile_id,
+    )
+    return db.scalar(query)
+
+
+def find_tax_profile_by_code(db: Session, *, tenant_id: str, code: str) -> CommerceTaxProfileModel | None:
+    query = select(CommerceTaxProfileModel).where(
+        CommerceTaxProfileModel.tenant_id == tenant_id,
+        CommerceTaxProfileModel.code == code,
+    )
+    return db.scalar(query)
+
+
+def create_tax_profile(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    code: str,
+    description: str | None,
+    prices_include_tax: bool,
+    rules_json: list[dict[str, object]],
+    status: str,
+) -> CommerceTaxProfileModel:
+    model = CommerceTaxProfileModel(
+        tenant_id=tenant_id,
+        name=name,
+        code=code,
+        description=description,
+        prices_include_tax=prices_include_tax,
+        rules_json=rules_json,
+        status=status,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_price_lists(db: Session, *, tenant_id: str) -> list[CommercePriceListModel]:
+    query = select(CommercePriceListModel).where(CommercePriceListModel.tenant_id == tenant_id)
+    query = query.order_by(CommercePriceListModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_price_list(db: Session, *, tenant_id: str, price_list_id: str) -> CommercePriceListModel | None:
+    query = select(CommercePriceListModel).where(
+        CommercePriceListModel.tenant_id == tenant_id,
+        CommercePriceListModel.id == price_list_id,
+    )
+    return db.scalar(query)
+
+
+def find_price_list_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommercePriceListModel | None:
+    query = select(CommercePriceListModel).where(
+        CommercePriceListModel.tenant_id == tenant_id,
+        CommercePriceListModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def create_price_list(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    currency: str,
+    customer_segment: str | None,
+    description: str | None,
+    status: str,
+) -> CommercePriceListModel:
+    model = CommercePriceListModel(
+        tenant_id=tenant_id,
+        name=name,
+        slug=slug,
+        currency=currency,
+        customer_segment=customer_segment,
+        description=description,
+        status=status,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_price_list_items(db: Session, *, tenant_id: str, price_list_id: str) -> list[CommercePriceListItemModel]:
+    query = select(CommercePriceListItemModel).where(
+        CommercePriceListItemModel.tenant_id == tenant_id,
+        CommercePriceListItemModel.price_list_id == price_list_id,
+    )
+    query = query.order_by(CommercePriceListItemModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def list_price_list_items_for_variants(
+    db: Session,
+    *,
+    tenant_id: str,
+    price_list_id: str,
+    variant_ids: list[str],
+) -> list[CommercePriceListItemModel]:
+    if not variant_ids:
+        return []
+    query = select(CommercePriceListItemModel).where(
+        CommercePriceListItemModel.tenant_id == tenant_id,
+        CommercePriceListItemModel.price_list_id == price_list_id,
+        CommercePriceListItemModel.variant_id.in_(variant_ids),
+    )
+    return list(db.scalars(query))
+
+
+def create_price_list_item(
+    db: Session,
+    *,
+    tenant_id: str,
+    price_list_id: str,
+    variant_id: str,
+    price_minor: int,
+) -> CommercePriceListItemModel:
+    model = CommercePriceListItemModel(
+        tenant_id=tenant_id,
+        price_list_id=price_list_id,
+        variant_id=variant_id,
+        price_minor=price_minor,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_coupons(db: Session, *, tenant_id: str) -> list[CommerceCouponModel]:
+    query = select(CommerceCouponModel).where(CommerceCouponModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceCouponModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def find_coupon_by_code(db: Session, *, tenant_id: str, code: str) -> CommerceCouponModel | None:
+    query = select(CommerceCouponModel).where(
+        CommerceCouponModel.tenant_id == tenant_id,
+        CommerceCouponModel.code == code,
+    )
+    return db.scalar(query)
+
+
+def create_coupon(
+    db: Session,
+    *,
+    tenant_id: str,
+    code: str,
+    description: str | None,
+    discount_type: str,
+    discount_value: int,
+    minimum_subtotal_minor: int,
+    maximum_discount_minor: int | None,
+    applicable_category_ids: list[str],
+    applicable_variant_ids: list[str],
+    status: str,
+) -> CommerceCouponModel:
+    model = CommerceCouponModel(
+        tenant_id=tenant_id,
+        code=code,
+        description=description,
+        discount_type=discount_type,
+        discount_value=discount_value,
+        minimum_subtotal_minor=minimum_subtotal_minor,
+        maximum_discount_minor=maximum_discount_minor,
+        applicable_category_ids=applicable_category_ids,
+        applicable_variant_ids=applicable_variant_ids,
+        status=status,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_attributes(db: Session, *, tenant_id: str) -> list[CommerceAttributeModel]:
+    query = select(CommerceAttributeModel).where(CommerceAttributeModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceAttributeModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def list_attributes_by_ids(db: Session, *, tenant_id: str, attribute_ids: list[str]) -> list[CommerceAttributeModel]:
+    if not attribute_ids:
+        return []
+    query = select(CommerceAttributeModel).where(
+        CommerceAttributeModel.tenant_id == tenant_id,
+        CommerceAttributeModel.id.in_(attribute_ids),
+    )
+    return list(db.scalars(query))
+
+
+def get_attribute(db: Session, *, tenant_id: str, attribute_id: str) -> CommerceAttributeModel | None:
+    query = select(CommerceAttributeModel).where(
+        CommerceAttributeModel.tenant_id == tenant_id,
+        CommerceAttributeModel.id == attribute_id,
+    )
+    return db.scalar(query)
+
+
+def find_attribute_by_code(db: Session, *, tenant_id: str, code: str) -> CommerceAttributeModel | None:
+    query = select(CommerceAttributeModel).where(
+        CommerceAttributeModel.tenant_id == tenant_id,
+        CommerceAttributeModel.code == code,
+    )
+    return db.scalar(query)
+
+
+def find_attribute_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommerceAttributeModel | None:
+    query = select(CommerceAttributeModel).where(
+        CommerceAttributeModel.tenant_id == tenant_id,
+        CommerceAttributeModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def create_attribute(
+    db: Session,
+    *,
+    tenant_id: str,
+    code: str,
+    slug: str,
+    label: str,
+    description: str | None,
+    value_type: str,
+    scope: str,
+    options_json: list[dict[str, object]],
+    unit_label: str | None,
+    is_required: bool,
+    is_filterable: bool,
+    is_variation_axis: bool,
+    vertical_bindings: list[str],
+    status: str,
+) -> CommerceAttributeModel:
+    model = CommerceAttributeModel(
+        tenant_id=tenant_id,
+        code=code,
+        slug=slug,
+        label=label,
+        description=description,
+        value_type=value_type,
+        scope=scope,
+        options_json=options_json,
+        unit_label=unit_label,
+        is_required=is_required,
+        is_filterable=is_filterable,
+        is_variation_axis=is_variation_axis,
+        vertical_bindings=vertical_bindings,
+        status=status,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_attribute_sets(db: Session, *, tenant_id: str) -> list[CommerceAttributeSetModel]:
+    query = select(CommerceAttributeSetModel).where(CommerceAttributeSetModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceAttributeSetModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_attribute_set(db: Session, *, tenant_id: str, attribute_set_id: str) -> CommerceAttributeSetModel | None:
+    query = select(CommerceAttributeSetModel).where(
+        CommerceAttributeSetModel.tenant_id == tenant_id,
+        CommerceAttributeSetModel.id == attribute_set_id,
+    )
+    return db.scalar(query)
+
+
+def find_attribute_set_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommerceAttributeSetModel | None:
+    query = select(CommerceAttributeSetModel).where(
+        CommerceAttributeSetModel.tenant_id == tenant_id,
+        CommerceAttributeSetModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def create_attribute_set(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    description: str | None,
+    attribute_ids: list[str],
+    vertical_bindings: list[str],
+    status: str,
+) -> CommerceAttributeSetModel:
+    model = CommerceAttributeSetModel(
+        tenant_id=tenant_id,
+        name=name,
+        slug=slug,
+        description=description,
+        attribute_ids=attribute_ids,
+        vertical_bindings=vertical_bindings,
+        status=status,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_products(db: Session, *, tenant_id: str) -> list[CommerceProductModel]:
+    query = select(CommerceProductModel).where(CommerceProductModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceProductModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_product(db: Session, *, tenant_id: str, product_id: str) -> CommerceProductModel | None:
+    query = select(CommerceProductModel).where(
+        CommerceProductModel.tenant_id == tenant_id,
+        CommerceProductModel.id == product_id,
+    )
+    return db.scalar(query)
+
+
+def find_product_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommerceProductModel | None:
+    query = select(CommerceProductModel).where(
+        CommerceProductModel.tenant_id == tenant_id,
+        CommerceProductModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def create_product(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    description: str | None,
+    brand_id: str | None,
+    vendor_id: str | None,
+    collection_ids: list[str],
+    attribute_set_id: str | None,
+    category_ids: list[str],
+    seo_title: str | None,
+    seo_description: str | None,
+    status: str,
+) -> CommerceProductModel:
+    model = CommerceProductModel(
+        tenant_id=tenant_id,
+        name=name,
+        slug=slug,
+        description=description,
+        brand_id=brand_id,
+        vendor_id=vendor_id,
+        collection_ids=collection_ids,
+        attribute_set_id=attribute_set_id,
+        category_ids=category_ids,
+        seo_title=seo_title,
+        seo_description=seo_description,
+        status=status,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_variants(db: Session, *, tenant_id: str) -> list[CommerceVariantModel]:
+    query = select(CommerceVariantModel).where(CommerceVariantModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceVariantModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def list_variants_for_products(db: Session, *, tenant_id: str, product_ids: list[str]) -> list[CommerceVariantModel]:
+    if not product_ids:
+        return []
+    query = select(CommerceVariantModel).where(
+        CommerceVariantModel.tenant_id == tenant_id,
+        CommerceVariantModel.product_id.in_(product_ids),
+    )
+    query = query.order_by(CommerceVariantModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def get_variant(db: Session, *, tenant_id: str, variant_id: str) -> CommerceVariantModel | None:
+    query = select(CommerceVariantModel).where(
+        CommerceVariantModel.tenant_id == tenant_id,
+        CommerceVariantModel.id == variant_id,
+    )
+    return db.scalar(query)
+
+
+def find_variant_by_sku(db: Session, *, tenant_id: str, sku: str) -> CommerceVariantModel | None:
+    query = select(CommerceVariantModel).where(
+        CommerceVariantModel.tenant_id == tenant_id,
+        CommerceVariantModel.sku == sku,
+    )
+    return db.scalar(query)
+
+
+def create_variant(
+    db: Session,
+    *,
+    tenant_id: str,
+    product_id: str,
+    sku: str,
+    label: str,
+    price_minor: int,
+    currency: str,
+    inventory_quantity: int,
+) -> CommerceVariantModel:
+    model = CommerceVariantModel(
+        tenant_id=tenant_id,
+        product_id=product_id,
+        sku=sku,
+        label=label,
+        price_minor=price_minor,
+        currency=currency,
+        inventory_quantity=inventory_quantity,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_warehouses(db: Session, *, tenant_id: str) -> list[CommerceWarehouseModel]:
+    query = select(CommerceWarehouseModel).where(CommerceWarehouseModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceWarehouseModel.is_default.desc(), CommerceWarehouseModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def get_warehouse(db: Session, *, tenant_id: str, warehouse_id: str) -> CommerceWarehouseModel | None:
+    query = select(CommerceWarehouseModel).where(
+        CommerceWarehouseModel.tenant_id == tenant_id,
+        CommerceWarehouseModel.id == warehouse_id,
+    )
+    return db.scalar(query)
+
+
+def find_warehouse_by_slug(db: Session, *, tenant_id: str, slug: str) -> CommerceWarehouseModel | None:
+    query = select(CommerceWarehouseModel).where(
+        CommerceWarehouseModel.tenant_id == tenant_id,
+        CommerceWarehouseModel.slug == slug,
+    )
+    return db.scalar(query)
+
+
+def find_warehouse_by_code(db: Session, *, tenant_id: str, code: str) -> CommerceWarehouseModel | None:
+    query = select(CommerceWarehouseModel).where(
+        CommerceWarehouseModel.tenant_id == tenant_id,
+        CommerceWarehouseModel.code == code,
+    )
+    return db.scalar(query)
+
+
+def create_warehouse(
+    db: Session,
+    *,
+    tenant_id: str,
+    name: str,
+    slug: str,
+    code: str,
+    city: str | None,
+    country: str | None,
+    status: str,
+    is_default: bool,
+) -> CommerceWarehouseModel:
+    model = CommerceWarehouseModel(
+        tenant_id=tenant_id,
+        name=name,
+        slug=slug,
+        code=code,
+        city=city,
+        country=country,
+        status=status,
+        is_default=is_default,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_warehouse_stocks(
+    db: Session,
+    *,
+    tenant_id: str,
+    warehouse_id: str | None = None,
+    variant_id: str | None = None,
+) -> list[CommerceWarehouseStockModel]:
+    query = select(CommerceWarehouseStockModel).where(CommerceWarehouseStockModel.tenant_id == tenant_id)
+    if warehouse_id:
+        query = query.where(CommerceWarehouseStockModel.warehouse_id == warehouse_id)
+    if variant_id:
+        query = query.where(CommerceWarehouseStockModel.variant_id == variant_id)
+    query = query.order_by(CommerceWarehouseStockModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def list_warehouse_stocks_for_variants(
+    db: Session,
+    *,
+    tenant_id: str,
+    variant_ids: list[str],
+) -> list[CommerceWarehouseStockModel]:
+    if not variant_ids:
+        return []
+    query = select(CommerceWarehouseStockModel).where(
+        CommerceWarehouseStockModel.tenant_id == tenant_id,
+        CommerceWarehouseStockModel.variant_id.in_(variant_ids),
+    )
+    query = query.order_by(CommerceWarehouseStockModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def get_warehouse_stock(
+    db: Session,
+    *,
+    tenant_id: str,
+    warehouse_id: str,
+    variant_id: str,
+) -> CommerceWarehouseStockModel | None:
+    query = select(CommerceWarehouseStockModel).where(
+        CommerceWarehouseStockModel.tenant_id == tenant_id,
+        CommerceWarehouseStockModel.warehouse_id == warehouse_id,
+        CommerceWarehouseStockModel.variant_id == variant_id,
+    )
+    return db.scalar(query)
+
+
+def create_warehouse_stock(
+    db: Session,
+    *,
+    tenant_id: str,
+    warehouse_id: str,
+    variant_id: str,
+    on_hand_quantity: int,
+    reserved_quantity: int,
+    low_stock_threshold: int,
+) -> CommerceWarehouseStockModel:
+    model = CommerceWarehouseStockModel(
+        tenant_id=tenant_id,
+        warehouse_id=warehouse_id,
+        variant_id=variant_id,
+        on_hand_quantity=on_hand_quantity,
+        reserved_quantity=reserved_quantity,
+        low_stock_threshold=low_stock_threshold,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_stock_ledger_entries(
+    db: Session,
+    *,
+    tenant_id: str,
+    warehouse_id: str | None = None,
+    variant_id: str | None = None,
+) -> list[CommerceStockLedgerEntryModel]:
+    query = select(CommerceStockLedgerEntryModel).where(CommerceStockLedgerEntryModel.tenant_id == tenant_id)
+    if warehouse_id:
+        query = query.where(CommerceStockLedgerEntryModel.warehouse_id == warehouse_id)
+    if variant_id:
+        query = query.where(CommerceStockLedgerEntryModel.variant_id == variant_id)
+    query = query.order_by(CommerceStockLedgerEntryModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def create_stock_ledger_entry(
+    db: Session,
+    *,
+    tenant_id: str,
+    warehouse_id: str,
+    variant_id: str,
+    entry_type: str,
+    quantity_delta: int,
+    balance_after: int,
+    reserved_after: int,
+    reference_type: str | None,
+    reference_id: str | None,
+    notes: str | None,
+    recorded_by_user_id: str,
+) -> CommerceStockLedgerEntryModel:
+    model = CommerceStockLedgerEntryModel(
+        tenant_id=tenant_id,
+        warehouse_id=warehouse_id,
+        variant_id=variant_id,
+        entry_type=entry_type,
+        quantity_delta=quantity_delta,
+        balance_after=balance_after,
+        reserved_after=reserved_after,
+        reference_type=reference_type,
+        reference_id=reference_id,
+        notes=notes,
+        recorded_by_user_id=recorded_by_user_id,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_product_attribute_values_for_products(
+    db: Session,
+    *,
+    tenant_id: str,
+    product_ids: list[str],
+) -> list[CommerceProductAttributeValueModel]:
+    if not product_ids:
+        return []
+    query = select(CommerceProductAttributeValueModel).where(
+        CommerceProductAttributeValueModel.tenant_id == tenant_id,
+        CommerceProductAttributeValueModel.product_id.in_(product_ids),
+    )
+    query = query.order_by(CommerceProductAttributeValueModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def create_product_attribute_value(
+    db: Session,
+    *,
+    tenant_id: str,
+    product_id: str,
+    attribute_id: str,
+    value_json: object,
+) -> CommerceProductAttributeValueModel:
+    model = CommerceProductAttributeValueModel(
+        tenant_id=tenant_id,
+        product_id=product_id,
+        attribute_id=attribute_id,
+        value_json=value_json,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_variant_attribute_values_for_variants(
+    db: Session,
+    *,
+    tenant_id: str,
+    variant_ids: list[str],
+) -> list[CommerceVariantAttributeValueModel]:
+    if not variant_ids:
+        return []
+    query = select(CommerceVariantAttributeValueModel).where(
+        CommerceVariantAttributeValueModel.tenant_id == tenant_id,
+        CommerceVariantAttributeValueModel.variant_id.in_(variant_ids),
+    )
+    query = query.order_by(CommerceVariantAttributeValueModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def create_variant_attribute_value(
+    db: Session,
+    *,
+    tenant_id: str,
+    variant_id: str,
+    attribute_id: str,
+    value_json: object,
+) -> CommerceVariantAttributeValueModel:
+    model = CommerceVariantAttributeValueModel(
+        tenant_id=tenant_id,
+        variant_id=variant_id,
+        attribute_id=attribute_id,
+        value_json=value_json,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_orders(db: Session, *, tenant_id: str) -> list[CommerceOrderModel]:
+    query = select(CommerceOrderModel).where(CommerceOrderModel.tenant_id == tenant_id)
+    query = query.order_by(CommerceOrderModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_order(db: Session, *, tenant_id: str, order_id: str) -> CommerceOrderModel | None:
+    query = select(CommerceOrderModel).where(
+        CommerceOrderModel.tenant_id == tenant_id,
+        CommerceOrderModel.id == order_id,
+    )
+    return db.scalar(query)
+
+
+def list_order_lines_for_orders(db: Session, *, tenant_id: str, order_ids: list[str]) -> list[CommerceOrderLineModel]:
+    if not order_ids:
+        return []
+    query = select(CommerceOrderLineModel).where(
+        CommerceOrderLineModel.tenant_id == tenant_id,
+        CommerceOrderLineModel.order_id.in_(order_ids),
+    )
+    query = query.order_by(CommerceOrderLineModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def create_order(
+    db: Session,
+    *,
+    tenant_id: str,
+    customer_id: str,
+    price_list_id: str | None,
+    tax_profile_id: str | None,
+    coupon_code: str | None,
+    status: str,
+    currency: str,
+    subtotal_minor: int,
+    discount_minor: int,
+    tax_minor: int,
+    total_minor: int,
+    payment_status: str,
+    paid_minor: int,
+    refunded_minor: int,
+    balance_minor: int,
+    invoice_number: str | None,
+    invoice_issued_at: str | None,
+    inventory_reserved: bool,
+    placed_at: str | None,
+) -> CommerceOrderModel:
+    model = CommerceOrderModel(
+        tenant_id=tenant_id,
+        customer_id=customer_id,
+        price_list_id=price_list_id,
+        tax_profile_id=tax_profile_id,
+        coupon_code=coupon_code,
+        status=status,
+        currency=currency,
+        subtotal_minor=subtotal_minor,
+        discount_minor=discount_minor,
+        tax_minor=tax_minor,
+        total_minor=total_minor,
+        payment_status=payment_status,
+        paid_minor=paid_minor,
+        refunded_minor=refunded_minor,
+        balance_minor=balance_minor,
+        invoice_number=invoice_number,
+        invoice_issued_at=invoice_issued_at,
+        inventory_reserved=inventory_reserved,
+        placed_at=placed_at,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def create_order_line(
+    db: Session,
+    *,
+    order_id: str,
+    tenant_id: str,
+    product_id: str,
+    variant_id: str,
+    allocated_warehouse_id: str | None,
+    quantity: int,
+    fulfilled_quantity: int,
+    unit_price_minor: int,
+    line_total_minor: int,
+) -> CommerceOrderLineModel:
+    model = CommerceOrderLineModel(
+        order_id=order_id,
+        tenant_id=tenant_id,
+        product_id=product_id,
+        variant_id=variant_id,
+        allocated_warehouse_id=allocated_warehouse_id,
+        quantity=quantity,
+        fulfilled_quantity=fulfilled_quantity,
+        unit_price_minor=unit_price_minor,
+        line_total_minor=line_total_minor,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_fulfillments(db: Session, *, tenant_id: str, order_id: str | None = None) -> list[CommerceFulfillmentModel]:
+    query = select(CommerceFulfillmentModel).where(CommerceFulfillmentModel.tenant_id == tenant_id)
+    if order_id:
+        query = query.where(CommerceFulfillmentModel.order_id == order_id)
+    query = query.order_by(CommerceFulfillmentModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_fulfillment(db: Session, *, tenant_id: str, fulfillment_id: str) -> CommerceFulfillmentModel | None:
+    query = select(CommerceFulfillmentModel).where(
+        CommerceFulfillmentModel.tenant_id == tenant_id,
+        CommerceFulfillmentModel.id == fulfillment_id,
+    )
+    return db.scalar(query)
+
+
+def create_fulfillment(
+    db: Session,
+    *,
+    tenant_id: str,
+    order_id: str,
+    warehouse_id: str | None,
+    fulfillment_number: str,
+    status: str,
+    created_by_user_id: str,
+    packed_at: str | None,
+    shipped_at: str | None,
+    delivered_at: str | None,
+) -> CommerceFulfillmentModel:
+    model = CommerceFulfillmentModel(
+        tenant_id=tenant_id,
+        order_id=order_id,
+        warehouse_id=warehouse_id,
+        fulfillment_number=fulfillment_number,
+        status=status,
+        created_by_user_id=created_by_user_id,
+        packed_at=packed_at,
+        shipped_at=shipped_at,
+        delivered_at=delivered_at,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_fulfillment_lines(
+    db: Session,
+    *,
+    tenant_id: str,
+    fulfillment_ids: list[str],
+) -> list[CommerceFulfillmentLineModel]:
+    if not fulfillment_ids:
+        return []
+    query = select(CommerceFulfillmentLineModel).where(
+        CommerceFulfillmentLineModel.tenant_id == tenant_id,
+        CommerceFulfillmentLineModel.fulfillment_id.in_(fulfillment_ids),
+    )
+    query = query.order_by(CommerceFulfillmentLineModel.created_at.asc())
+    return list(db.scalars(query))
+
+
+def create_fulfillment_line(
+    db: Session,
+    *,
+    tenant_id: str,
+    fulfillment_id: str,
+    order_line_id: str,
+    variant_id: str,
+    quantity: int,
+) -> CommerceFulfillmentLineModel:
+    model = CommerceFulfillmentLineModel(
+        tenant_id=tenant_id,
+        fulfillment_id=fulfillment_id,
+        order_line_id=order_line_id,
+        variant_id=variant_id,
+        quantity=quantity,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_shipments(
+    db: Session,
+    *,
+    tenant_id: str,
+    fulfillment_id: str | None = None,
+) -> list[CommerceShipmentModel]:
+    query = select(CommerceShipmentModel).where(CommerceShipmentModel.tenant_id == tenant_id)
+    if fulfillment_id:
+        query = query.where(CommerceShipmentModel.fulfillment_id == fulfillment_id)
+    query = query.order_by(CommerceShipmentModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_shipment(db: Session, *, tenant_id: str, shipment_id: str) -> CommerceShipmentModel | None:
+    query = select(CommerceShipmentModel).where(
+        CommerceShipmentModel.tenant_id == tenant_id,
+        CommerceShipmentModel.id == shipment_id,
+    )
+    return db.scalar(query)
+
+
+def create_shipment(
+    db: Session,
+    *,
+    tenant_id: str,
+    fulfillment_id: str,
+    carrier: str,
+    service_level: str | None,
+    tracking_number: str,
+    status: str,
+    shipped_at: str | None,
+    delivered_at: str | None,
+    metadata_json: dict[str, object],
+) -> CommerceShipmentModel:
+    model = CommerceShipmentModel(
+        tenant_id=tenant_id,
+        fulfillment_id=fulfillment_id,
+        carrier=carrier,
+        service_level=service_level,
+        tracking_number=tracking_number,
+        status=status,
+        shipped_at=shipped_at,
+        delivered_at=delivered_at,
+        metadata_json=metadata_json,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_payments(db: Session, *, tenant_id: str, order_id: str | None = None) -> list[CommercePaymentModel]:
+    query = select(CommercePaymentModel).where(CommercePaymentModel.tenant_id == tenant_id)
+    if order_id:
+        query = query.where(CommercePaymentModel.order_id == order_id)
+    query = query.order_by(CommercePaymentModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def get_payment(db: Session, *, tenant_id: str, payment_id: str) -> CommercePaymentModel | None:
+    query = select(CommercePaymentModel).where(
+        CommercePaymentModel.tenant_id == tenant_id,
+        CommercePaymentModel.id == payment_id,
+    )
+    return db.scalar(query)
+
+
+def create_payment(
+    db: Session,
+    *,
+    tenant_id: str,
+    order_id: str,
+    amount_minor: int,
+    currency: str,
+    provider: str | None,
+    payment_method: str,
+    status: str,
+    reference: str | None,
+    notes: str | None,
+    received_at: str,
+    recorded_by_user_id: str,
+) -> CommercePaymentModel:
+    model = CommercePaymentModel(
+        tenant_id=tenant_id,
+        order_id=order_id,
+        amount_minor=amount_minor,
+        currency=currency,
+        provider=provider,
+        payment_method=payment_method,
+        status=status,
+        reference=reference,
+        notes=notes,
+        received_at=received_at,
+        recorded_by_user_id=recorded_by_user_id,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_refunds(db: Session, *, tenant_id: str, order_id: str | None = None) -> list[CommerceRefundModel]:
+    query = select(CommerceRefundModel).where(CommerceRefundModel.tenant_id == tenant_id)
+    if order_id:
+        query = query.where(CommerceRefundModel.order_id == order_id)
+    query = query.order_by(CommerceRefundModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def create_refund(
+    db: Session,
+    *,
+    tenant_id: str,
+    order_id: str,
+    payment_id: str,
+    amount_minor: int,
+    currency: str,
+    reason: str,
+    reference: str | None,
+    status: str,
+    refunded_at: str,
+    recorded_by_user_id: str,
+) -> CommerceRefundModel:
+    model = CommerceRefundModel(
+        tenant_id=tenant_id,
+        order_id=order_id,
+        payment_id=payment_id,
+        amount_minor=amount_minor,
+        currency=currency,
+        reason=reason,
+        reference=reference,
+        status=status,
+        refunded_at=refunded_at,
+        recorded_by_user_id=recorded_by_user_id,
+    )
+    db.add(model)
+    db.flush()
+    return model
+
+
+def list_invoices(db: Session, *, tenant_id: str, order_id: str | None = None) -> list[CommerceInvoiceModel]:
+    query = select(CommerceInvoiceModel).where(CommerceInvoiceModel.tenant_id == tenant_id)
+    if order_id:
+        query = query.where(CommerceInvoiceModel.order_id == order_id)
+    query = query.order_by(CommerceInvoiceModel.created_at.desc())
+    return list(db.scalars(query))
+
+
+def create_invoice(
+    db: Session,
+    *,
+    tenant_id: str,
+    order_id: str,
+    customer_id: str,
+    invoice_number: str,
+    status: str,
+    currency: str,
+    subtotal_minor: int,
+    discount_minor: int,
+    tax_minor: int,
+    total_minor: int,
+    issued_at: str,
+    issued_by_user_id: str,
+) -> CommerceInvoiceModel:
+    model = CommerceInvoiceModel(
+        tenant_id=tenant_id,
+        order_id=order_id,
+        customer_id=customer_id,
+        invoice_number=invoice_number,
+        status=status,
+        currency=currency,
+        subtotal_minor=subtotal_minor,
+        discount_minor=discount_minor,
+        tax_minor=tax_minor,
+        total_minor=total_minor,
+        issued_at=issued_at,
+        issued_by_user_id=issued_by_user_id,
+    )
+    db.add(model)
+    db.flush()
+    return model

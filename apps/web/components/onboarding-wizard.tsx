@@ -1,0 +1,316 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, Database, Layers3, Rocket } from "lucide-react";
+
+import { ConsoleShell } from "@/components/console-shell";
+import { useAuth } from "@/components/providers/auth-provider";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { createAgency, createTenant, type AgencyDto, type TenantDto } from "@/lib/api";
+
+export function OnboardingWizard() {
+  const router = useRouter();
+  const { session, status, token } = useAuth();
+  const [agencyForm, setAgencyForm] = useState({
+    slug: "demo-agency",
+    name: "Demo Agency",
+    region: "in",
+    owner_user_id: "founder@kalpzero.com"
+  });
+  const [tenantForm, setTenantForm] = useState({
+    agency_slug: "demo-agency",
+    slug: "demo-tenant",
+    display_name: "Demo Tenant",
+    feature_flags: "seo-suite,custom-domain"
+  });
+  const [createdAgency, setCreatedAgency] = useState<AgencyDto | null>(null);
+  const [createdTenant, setCreatedTenant] = useState<TenantDto | null>(null);
+  const [isSubmittingAgency, setIsSubmittingAgency] = useState(false);
+  const [isSubmittingTenant, setIsSubmittingTenant] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (status === "anonymous") {
+      router.push("/login");
+      return;
+    }
+    if (status === "authenticated" && !session?.roles.includes("platform_admin")) {
+      router.push("/tenant");
+    }
+  }, [router, session?.roles, status]);
+
+  async function onCreateAgency(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) {
+      return;
+    }
+
+    setIsSubmittingAgency(true);
+    setError(null);
+
+    try {
+      const agency = await createAgency(token, agencyForm);
+      setCreatedAgency(agency);
+      setTenantForm((current) => ({ ...current, agency_slug: agency.slug }));
+    } catch (submissionError) {
+      setError(submissionError instanceof Error ? submissionError.message : "Unable to create agency.");
+    } finally {
+      setIsSubmittingAgency(false);
+    }
+  }
+
+  async function onCreateTenant(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) {
+      return;
+    }
+
+    setIsSubmittingTenant(true);
+    setError(null);
+
+    try {
+      const tenant = await createTenant(token, {
+        agency_slug: tenantForm.agency_slug,
+        slug: tenantForm.slug,
+        display_name: tenantForm.display_name,
+        infra_mode: "shared",
+        vertical_packs: ["commerce", "hotel"],
+        feature_flags: tenantForm.feature_flags
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      });
+      setCreatedTenant(tenant);
+    } catch (submissionError) {
+      setError(submissionError instanceof Error ? submissionError.message : "Unable to create tenant.");
+    } finally {
+      setIsSubmittingTenant(false);
+    }
+  }
+
+  return (
+    <ConsoleShell
+      scope="platform"
+      title="Onboard a business with guided steps, not raw system forms."
+      subtitle="Create the agency, create the tenant, and let Kalp provision the runtime database and baseline blueprint automatically."
+    >
+      <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-5">
+          <Card>
+            <CardHeader>
+              <CardTitle>Step 1. Create the agency</CardTitle>
+              <CardDescription>The agency is the top-level owner for one or more businesses under Kalp.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreateAgency}>
+                <Field label="Agency name">
+                  <Input
+                    value={agencyForm.name}
+                    onChange={(event) => setAgencyForm((current) => ({ ...current, name: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Agency slug">
+                  <Input
+                    value={agencyForm.slug}
+                    onChange={(event) => {
+                      const slug = event.target.value;
+                      setAgencyForm((current) => ({ ...current, slug }));
+                      setTenantForm((current) => ({ ...current, agency_slug: slug }));
+                    }}
+                  />
+                </Field>
+                <Field label="Region">
+                  <Input
+                    value={agencyForm.region}
+                    onChange={(event) => setAgencyForm((current) => ({ ...current, region: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Owner user id">
+                  <Input
+                    value={agencyForm.owner_user_id}
+                    onChange={(event) =>
+                      setAgencyForm((current) => ({ ...current, owner_user_id: event.target.value }))
+                    }
+                  />
+                </Field>
+                <div className="md:col-span-2">
+                  <Button type="submit" size="lg" disabled={isSubmittingAgency}>
+                    {isSubmittingAgency ? "Creating agency..." : "Create agency"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Step 2. Create the tenant</CardTitle>
+              <CardDescription>For the pilot scope, commerce and hotel are provisioned together for the reference business setup.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="grid gap-4 md:grid-cols-2" onSubmit={onCreateTenant}>
+                <Field label="Agency slug">
+                  <Input
+                    value={tenantForm.agency_slug}
+                    onChange={(event) => setTenantForm((current) => ({ ...current, agency_slug: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Tenant slug">
+                  <Input
+                    value={tenantForm.slug}
+                    onChange={(event) => setTenantForm((current) => ({ ...current, slug: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Display name">
+                  <Input
+                    value={tenantForm.display_name}
+                    onChange={(event) =>
+                      setTenantForm((current) => ({ ...current, display_name: event.target.value }))
+                    }
+                  />
+                </Field>
+                <Field label="Feature flags">
+                  <Textarea
+                    className="min-h-11"
+                    value={tenantForm.feature_flags}
+                    onChange={(event) =>
+                      setTenantForm((current) => ({ ...current, feature_flags: event.target.value }))
+                    }
+                  />
+                </Field>
+                <div className="md:col-span-2 flex flex-wrap gap-2">
+                  <Badge>hotel</Badge>
+                  <Badge>commerce</Badge>
+                  <Badge variant="outline">shared infra</Badge>
+                </div>
+                <div className="md:col-span-2">
+                  <Button type="submit" size="lg" disabled={isSubmittingTenant}>
+                    {isSubmittingTenant ? "Provisioning tenant..." : "Create tenant"}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {error ? (
+            <Card className="border-destructive/40">
+              <CardContent className="p-6 text-sm text-destructive">{error}</CardContent>
+            </Card>
+          ) : null}
+        </div>
+
+        <div className="space-y-5">
+          <Card>
+            <CardHeader>
+              <CardTitle>What happens automatically</CardTitle>
+              <CardDescription>Kalp provisions the technical pieces so the operator sees business language instead of infrastructure tasks.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <QuickStep icon={Rocket} title="Tenant record created" description="The control plane stores the tenant, infra mode, packs, and feature flags." />
+              <QuickStep icon={Database} title="Runtime DB provisioned" description="A tenant-scoped Mongo database is created from the canonical naming strategy." />
+              <QuickStep icon={Layers3} title="Publishing seeded" description="Blueprint, site pages, and discovery documents are inserted so the public runtime is usable immediately." />
+            </CardContent>
+          </Card>
+
+          {createdAgency ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Agency created</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <p>
+                  <span className="font-medium text-foreground">Name:</span> {createdAgency.name}
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">Slug:</span> {createdAgency.slug}
+                </p>
+                <p className="text-muted-foreground">Tenant onboarding can now use this agency immediately.</p>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {createdTenant ? (
+            <Card className="border-primary/25">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="size-5 text-primary" />
+                  <CardTitle>Tenant provisioned</CardTitle>
+                </div>
+                <CardDescription>Use these runtime details to validate the onboarding pipeline and then open the tenant workspace.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <InfoRow label="Tenant" value={`${createdTenant.display_name} (${createdTenant.slug})`} />
+                <InfoRow label="Runtime DB" value={createdTenant.runtime_documents?.database ?? "n/a"} />
+                <InfoRow
+                  label="Seeded docs"
+                  value={String(createdTenant.runtime_documents?.bootstrap.seeded_document_count ?? 0)}
+                />
+                <InfoRow
+                  label="Page slugs"
+                  value={(createdTenant.runtime_documents?.bootstrap.page_slugs ?? []).join(", ") || "none"}
+                />
+                <div className="flex gap-2 pt-3">
+                  <Button asChild>
+                    <Link href="/platform">Back to Super Admin</Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href="/login">Open login</Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+        </div>
+      </div>
+    </ConsoleShell>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+function QuickStep({
+  icon: Icon,
+  title,
+  description
+}: {
+  icon: typeof Rocket;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-background/75 p-4">
+      <div className="flex items-center gap-3">
+        <div className="rounded-2xl bg-primary/10 p-2 text-primary">
+          <Icon className="size-4" />
+        </div>
+        <div>
+          <p className="font-semibold text-foreground">{title}</p>
+          <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-background/75 px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="mt-2 font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
