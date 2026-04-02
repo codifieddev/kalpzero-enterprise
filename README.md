@@ -2,8 +2,8 @@
 
 KalpZero Enterprise is the canonical rebuild of KalpZero as an enterprise-grade,
 multi-tenant operating platform for vertical businesses. The existing repository
-at `/Users/apple/Desktop/WORK/GIT/kalpzero` is treated as `legacy-reference`
-only and is used for extraction, mapping, and concept migration.
+is treated as `legacy-reference` only and is used for extraction, mapping, and
+concept migration.
 
 ## Product Direction
 
@@ -98,21 +98,40 @@ MongoDB for flexible business documents and staged imports.
   scheduling, night audit, stay records, room moves, guest documents, public
   hotel content, and summary reporting
 - Public tenant route rendering in
-  `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/web/app/[tenantSlug]/[[...pageSlug]]/page.tsx`
+  `apps/web/app/[tenantSlug]/[[...pageSlug]]/page.tsx`
 - Admin shell blueprint preview in
-  `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/web/app/studio/[tenantSlug]/page.tsx`
+  `apps/web/app/studio/[tenantSlug]/page.tsx`
 - Super Admin and tenant admin shells now live in
-  `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/web/app/platform/page.tsx`,
-  `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/web/app/platform/onboarding/page.tsx`,
-  `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/web/app/tenant/page.tsx`, and
-  `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/web/app/login/page.tsx`
+  `apps/web/app/platform/page.tsx`,
+  `apps/web/app/platform/onboarding/page.tsx`,
+  `apps/web/app/tenant/page.tsx`, and
+  `apps/web/app/login/page.tsx`
+
+## Path Convention
+
+This README uses `REPO_ROOT` for the local clone directory. Set it once after
+cloning:
+
+```bash
+git clone https://github.com/hideepakrai/kalpzero-enterprise.git
+cd kalpzero-enterprise
+export REPO_ROOT="$(pwd)"
+```
+
+If you already cloned the repo elsewhere, just `cd` into it and export the same
+variable:
+
+```bash
+cd /path/to/kalpzero-enterprise
+export REPO_ROOT="$(pwd)"
+```
 
 ## Setup
 
 Run these first:
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm install --frozen-lockfile
 cd apps/api
 python3 -m venv .venv
@@ -127,10 +146,10 @@ What they do:
 
 ## Local Setup Order
 
-Follow this exact order on this machine:
+Follow this exact order on a fresh local setup:
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm install --frozen-lockfile
 cd apps/api
 python3 -m venv .venv
@@ -148,14 +167,13 @@ brew tap mongodb/brew
 brew install mongodb-community@8.0
 brew services start postgresql@16
 brew services start redis
-brew services start mongodb/brew/mongodb-community@8.0
+brew services start mongodb-community@8.0
 createdb kalpzero_enterprise
 pnpm doctor:local
 ```
 
 The local API env is already configured in
-[`/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/api/.env`](/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/api/.env)
-for the Homebrew local path:
+[`apps/api/.env`](apps/api/.env) for the Homebrew local path:
 
 - Postgres: `postgresql+psycopg:///kalpzero_enterprise`
 - MongoDB: `mongodb://localhost:27017`
@@ -166,7 +184,7 @@ for the Homebrew local path:
 Run this before trying the full local infra path:
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm doctor:local
 ```
 
@@ -187,7 +205,7 @@ MongoDB, or Redis running yet. It uses SQLite and in-memory runtime docs only
 for local development.
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm dev:api:local
 ```
 
@@ -202,7 +220,7 @@ For onboarding-grade behavior, copy the env template and point it at real
 services:
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 cp .env.example apps/api/.env
 ```
 
@@ -212,7 +230,7 @@ The repo now expects the psycopg v3 driver path for Postgres:
 - explicit host form: `postgresql+psycopg://YOUR_LOCAL_USER@localhost:5432/kalpzero_enterprise`
 - tolerated: `postgresql://...` and `postgres://...` are auto-normalized by the API
 
-If you want full local infra on this machine without Docker, install the
+If you want full local infra without Docker, install the
 services with Homebrew:
 
 ```bash
@@ -228,7 +246,7 @@ createdb kalpzero_enterprise
 Then run:
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm dev:api:infra
 ```
 
@@ -244,7 +262,7 @@ curl http://127.0.0.1:8000/health/ready
 This is the fastest way to get the Super Admin UI running locally:
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm super-admin:start
 ```
 
@@ -317,7 +335,7 @@ curl -s http://127.0.0.1:8000/publishing/pages \
   -H "Authorization: Bearer $TENANT_TOKEN"
 ```
 
-Verified local infra prerequisites on this machine:
+Recommended local infra prerequisites:
 
 - `postgresql@16` installed and started with Homebrew
 - `redis` installed and started with Homebrew
@@ -349,7 +367,7 @@ starting another copy.
 ### Web App
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm dev:web
 ```
 
@@ -361,7 +379,7 @@ Notes:
 ### Worker
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm dev:worker
 ```
 
@@ -376,7 +394,7 @@ Run testing in this order:
 ### 1. Type Check The Workspace
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm typecheck
 ```
 
@@ -385,7 +403,7 @@ Use this to validate TypeScript packages, web, and worker contracts.
 ### 2. Run The Full API Test Suite
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm test:api
 ```
 
@@ -395,7 +413,7 @@ command in the repo right now.
 ### 3. Run A Faster Smoke Subset
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm test:smoke
 ```
 
@@ -407,7 +425,7 @@ Use this while iterating on onboarding, commerce, or platform changes. It runs:
 ### 4. Run The Root Test Command
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm test
 ```
 
@@ -426,7 +444,7 @@ Current limitation:
 Use this exact sequence before backend onboarding work:
 
 ```bash
-cd /Users/apple/Desktop/WORK/GIT/kalpzero-enterprise
+cd "$REPO_ROOT"
 pnpm install --frozen-lockfile
 cd apps/api
 ./.venv/bin/pip install -e ".[dev]"
@@ -451,9 +469,9 @@ real-infra API boot command after configuring `apps/api/.env`.
 Use these backend tests as the current reference flows before running manual
 API checks:
 
-- `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/api/app/tests/test_api.py`
-- `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/api/app/tests/test_commerce.py`
-- `/Users/apple/Desktop/WORK/GIT/kalpzero-enterprise/apps/api/app/tests/test_hotel.py`
+- `apps/api/app/tests/test_api.py`
+- `apps/api/app/tests/test_commerce.py`
+- `apps/api/app/tests/test_hotel.py`
 
 The strongest commerce manual path now is:
 
