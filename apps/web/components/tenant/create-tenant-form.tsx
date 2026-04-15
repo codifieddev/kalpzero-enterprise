@@ -166,7 +166,7 @@ export function CreateTenantForm({
             />
           </Field>
           <div className="md:col-span-2 flex flex-wrap gap-2">
-           {tenantForm?.businessType && <Badge>{tenantForm?.businessType}</Badge>}
+           { <Badge>{tenantForm?.businessType}</Badge>}
             {tenantForm?.vertical_pack && <Badge variant="outline">{tenantForm?.vertical_pack}</Badge>}
             {/* <Badge variant="secondary">single selection</Badge> */}
           </div>
