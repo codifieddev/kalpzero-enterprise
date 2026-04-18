@@ -101,19 +101,17 @@ def _raise_http_error(exc: Exception) -> None:
     raise exc
 
 
-@router.get("/overview")
-def hotel_overview(
+async def hotel_overview(
     session: SessionContext = Depends(require_permission("hotel.reservations.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return get_overview(db, tenant_slug=session.tenant_id)
+        return await get_overview(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.get("/inventory/summary")
-def hotel_inventory_summary(
+async def hotel_inventory_summary(
     property_id: str | None = None,
     for_date: date | None = None,
     session: SessionContext = Depends(require_permission("hotel.rooms.read")),
@@ -122,9 +120,9 @@ def hotel_inventory_summary(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "items": get_inventory_summary(
+            "items": await get_inventory_summary(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 for_date=for_date or date.today(),
             ),
@@ -133,27 +131,25 @@ def hotel_inventory_summary(
         _raise_http_error(exc)
 
 
-@router.get("/properties")
-def hotel_properties(
+async def hotel_properties(
     session: SessionContext = Depends(require_permission("hotel.properties.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "properties": list_properties(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "properties": await list_properties(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/properties", status_code=status.HTTP_201_CREATED)
-def hotel_properties_create(
+async def hotel_properties_create(
     payload: CreateHotelPropertyRequest,
     session: SessionContext = Depends(require_permission("hotel.properties.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_property(
+        return await create_property(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             code=payload.code,
@@ -165,8 +161,7 @@ def hotel_properties_create(
         _raise_http_error(exc)
 
 
-@router.get("/room-types")
-def hotel_room_types(
+async def hotel_room_types(
     property_id: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.properties.read")),
     db: Session = Depends(get_db_session),
@@ -174,22 +169,21 @@ def hotel_room_types(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "room_types": list_room_types(db, tenant_slug=session.tenant_id, property_id=property_id),
+            "room_types": await list_room_types(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, property_id=property_id),
         }
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/room-types", status_code=status.HTTP_201_CREATED)
-def hotel_room_types_create(
+async def hotel_room_types_create(
     payload: CreateHotelRoomTypeRequest,
     session: SessionContext = Depends(require_permission("hotel.rooms.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_room_type(
+        return await create_room_type(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             name=payload.name,
@@ -208,28 +202,26 @@ def hotel_room_types_create(
         _raise_http_error(exc)
 
 
-@router.get("/meal-plans")
-def hotel_meal_plans(
+async def hotel_meal_plans(
     property_id: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.properties.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "meal_plans": list_meal_plans(db, tenant_slug=session.tenant_id, property_id=property_id)}
+        return {"tenant_id": session.tenant_id, "meal_plans": await list_meal_plans(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, property_id=property_id)}
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/meal-plans", status_code=status.HTTP_201_CREATED)
-def hotel_meal_plans_create(
+async def hotel_meal_plans_create(
     payload: CreateHotelMealPlanRequest,
     session: SessionContext = Depends(require_permission("hotel.properties.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_meal_plan(
+        return await create_meal_plan(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             code=payload.code,
@@ -244,8 +236,7 @@ def hotel_meal_plans_create(
         _raise_http_error(exc)
 
 
-@router.get("/rate-plans")
-def hotel_rate_plans(
+async def hotel_rate_plans(
     property_id: str | None = None,
     room_type_id: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.properties.read")),
@@ -254,9 +245,9 @@ def hotel_rate_plans(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "rate_plans": list_rate_plans(
+            "rate_plans": await list_rate_plans(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 room_type_id=room_type_id,
             ),
@@ -265,16 +256,15 @@ def hotel_rate_plans(
         _raise_http_error(exc)
 
 
-@router.post("/rate-plans", status_code=status.HTTP_201_CREATED)
-def hotel_rate_plans_create(
+async def hotel_rate_plans_create(
     payload: CreateHotelRatePlanRequest,
     session: SessionContext = Depends(require_permission("hotel.properties.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_rate_plan(
+        return await create_rate_plan(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             room_type_id=payload.room_type_id,
@@ -289,8 +279,7 @@ def hotel_rate_plans_create(
         _raise_http_error(exc)
 
 
-@router.get("/availability-rules")
-def hotel_availability_rules(
+async def hotel_availability_rules(
     property_id: str | None = None,
     room_type_id: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.rooms.read")),
@@ -299,9 +288,9 @@ def hotel_availability_rules(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "availability_rules": list_availability_rules(
+            "availability_rules": await list_availability_rules(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 room_type_id=room_type_id,
             ),
@@ -310,16 +299,15 @@ def hotel_availability_rules(
         _raise_http_error(exc)
 
 
-@router.post("/availability-rules", status_code=status.HTTP_201_CREATED)
-def hotel_availability_rules_create(
+async def hotel_availability_rules_create(
     payload: CreateHotelAvailabilityRuleRequest,
     session: SessionContext = Depends(require_permission("hotel.rooms.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_availability_rule(
+        return await create_availability_rule(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             room_type_id=payload.room_type_id,
@@ -334,28 +322,26 @@ def hotel_availability_rules_create(
         _raise_http_error(exc)
 
 
-@router.get("/rooms")
-def hotel_rooms(
+async def hotel_rooms(
     property_id: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.rooms.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "rooms": list_rooms(db, tenant_slug=session.tenant_id, property_id=property_id)}
+        return {"tenant_id": session.tenant_id, "rooms": await list_rooms(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, property_id=property_id)}
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/rooms", status_code=status.HTTP_201_CREATED)
-def hotel_rooms_create(
+async def hotel_rooms_create(
     payload: CreateHotelRoomRequest,
     session: SessionContext = Depends(require_permission("hotel.rooms.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_room(
+        return await create_room(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             room_type_id=payload.room_type_id,
@@ -374,27 +360,25 @@ def hotel_rooms_create(
         _raise_http_error(exc)
 
 
-@router.get("/guests")
-def hotel_guests(
+async def hotel_guests(
     session: SessionContext = Depends(require_permission("hotel.reservations.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "guests": list_guest_profiles(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "guests": await list_guest_profiles(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/guests", status_code=status.HTTP_201_CREATED)
-def hotel_guests_create(
+async def hotel_guests_create(
     payload: CreateHotelGuestProfileRequest,
     session: SessionContext = Depends(require_permission("hotel.reservations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_guest_profile(
+        return await create_guest_profile(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             first_name=payload.first_name,
             last_name=payload.last_name,
@@ -413,8 +397,7 @@ def hotel_guests_create(
         _raise_http_error(exc)
 
 
-@router.get("/guests/{guest_profile_id}/documents")
-def hotel_guest_documents(
+async def hotel_guest_documents(
     guest_profile_id: str,
     session: SessionContext = Depends(require_permission("hotel.reservations.read")),
     db: Session = Depends(get_db_session),
@@ -422,23 +405,22 @@ def hotel_guest_documents(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "documents": list_guest_documents(db, tenant_slug=session.tenant_id, guest_profile_id=guest_profile_id),
+            "documents": await list_guest_documents(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, guest_profile_id=guest_profile_id),
         }
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/guests/{guest_profile_id}/documents", status_code=status.HTTP_201_CREATED)
-def hotel_guest_documents_create(
+async def hotel_guest_documents_create(
     guest_profile_id: str,
     payload: CreateHotelGuestDocumentRequest,
     session: SessionContext = Depends(require_permission("hotel.reservations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_guest_document(
+        return await create_guest_document(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             guest_profile_id=guest_profile_id,
             document_kind=payload.document_kind,
@@ -453,8 +435,7 @@ def hotel_guest_documents_create(
         _raise_http_error(exc)
 
 
-@router.get("/reservations")
-def hotel_reservations(
+async def hotel_reservations(
     property_id: str | None = None,
     reservation_status: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.reservations.read")),
@@ -463,9 +444,9 @@ def hotel_reservations(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "reservations": list_reservations(
+            "reservations": await list_reservations(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 status=reservation_status,
             ),
@@ -474,16 +455,15 @@ def hotel_reservations(
         _raise_http_error(exc)
 
 
-@router.post("/reservations", status_code=status.HTTP_201_CREATED)
-def hotel_reservations_create(
+async def hotel_reservations_create(
     payload: CreateHotelReservationRequest,
     session: SessionContext = Depends(require_permission("hotel.reservations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_reservation(
+        return await create_reservation(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             room_type_id=payload.room_type_id,
@@ -508,17 +488,16 @@ def hotel_reservations_create(
         _raise_http_error(exc)
 
 
-@router.patch("/reservations/{reservation_id}/assign-room")
-def hotel_reservations_assign_room(
+async def hotel_reservations_assign_room(
     reservation_id: str,
     payload: HotelReservationAssignmentRequest,
     session: SessionContext = Depends(require_permission("hotel.reservations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return assign_reservation_room(
+        return await assign_reservation_room(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             reservation_id=reservation_id,
             room_id=payload.room_id,
@@ -527,17 +506,16 @@ def hotel_reservations_assign_room(
         _raise_http_error(exc)
 
 
-@router.patch("/reservations/{reservation_id}/status")
-def hotel_reservations_update_status(
+async def hotel_reservations_update_status(
     reservation_id: str,
     payload: HotelReservationStatusRequest,
     session: SessionContext = Depends(require_permission("hotel.reservations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return update_reservation_status(
+        return await update_reservation_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             reservation_id=reservation_id,
             status=payload.status,
@@ -546,8 +524,7 @@ def hotel_reservations_update_status(
         _raise_http_error(exc)
 
 
-@router.get("/stays")
-def hotel_stays(
+async def hotel_stays(
     property_id: str | None = None,
     stay_status: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.reservations.read")),
@@ -556,9 +533,9 @@ def hotel_stays(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "stays": list_stays(
+            "stays": await list_stays(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 status=stay_status,
             ),
@@ -567,29 +544,27 @@ def hotel_stays(
         _raise_http_error(exc)
 
 
-@router.get("/stays/{stay_id}")
-def hotel_stay_detail(
+async def hotel_stay_detail(
     stay_id: str,
     session: SessionContext = Depends(require_permission("hotel.reservations.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return get_stay_detail(db, tenant_slug=session.tenant_id, stay_id=stay_id)
+        return await get_stay_detail(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, stay_id=stay_id)
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/stays/{stay_id}/room-moves")
-def hotel_stay_room_move(
+async def hotel_stay_room_move(
     stay_id: str,
     payload: CreateHotelRoomMoveRequest,
     session: SessionContext = Depends(require_permission("hotel.reservations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return record_room_move(
+        return await record_room_move(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             stay_id=stay_id,
             to_room_id=payload.to_room_id,
@@ -599,8 +574,7 @@ def hotel_stay_room_move(
         _raise_http_error(exc)
 
 
-@router.get("/folios")
-def hotel_folios(
+async def hotel_folios(
     property_id: str | None = None,
     reservation_id: str | None = None,
     folio_status: str | None = None,
@@ -610,9 +584,9 @@ def hotel_folios(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "folios": list_folios(
+            "folios": await list_folios(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 reservation_id=reservation_id,
                 status=folio_status,
@@ -622,29 +596,27 @@ def hotel_folios(
         _raise_http_error(exc)
 
 
-@router.get("/folios/{folio_id}")
-def hotel_folio_detail(
+async def hotel_folio_detail(
     folio_id: str,
     session: SessionContext = Depends(require_permission("hotel.finance.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return get_folio_detail(db, tenant_slug=session.tenant_id, folio_id=folio_id)
+        return await get_folio_detail(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, folio_id=folio_id)
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/folios/{folio_id}/charges", status_code=status.HTTP_201_CREATED)
-def hotel_folio_charge_create(
+async def hotel_folio_charge_create(
     folio_id: str,
     payload: CreateHotelFolioChargeRequest,
     session: SessionContext = Depends(require_permission("hotel.finance.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return add_folio_charge(
+        return await add_folio_charge(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             folio_id=folio_id,
             category=payload.category,
@@ -659,17 +631,16 @@ def hotel_folio_charge_create(
         _raise_http_error(exc)
 
 
-@router.post("/folios/{folio_id}/payments", status_code=status.HTTP_201_CREATED)
-def hotel_folio_payment_create(
+async def hotel_folio_payment_create(
     folio_id: str,
     payload: CreateHotelPaymentRequest,
     session: SessionContext = Depends(require_permission("hotel.finance.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return record_payment(
+        return await record_payment(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             folio_id=folio_id,
             amount_minor=payload.amount_minor,
@@ -681,8 +652,7 @@ def hotel_folio_payment_create(
         _raise_http_error(exc)
 
 
-@router.get("/refunds")
-def hotel_refunds(
+async def hotel_refunds(
     property_id: str | None = None,
     folio_id: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.finance.read")),
@@ -691,9 +661,9 @@ def hotel_refunds(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "refunds": list_refunds(
+            "refunds": await list_refunds(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 folio_id=folio_id,
             ),
@@ -702,17 +672,16 @@ def hotel_refunds(
         _raise_http_error(exc)
 
 
-@router.post("/folios/{folio_id}/refunds", status_code=status.HTTP_201_CREATED)
-def hotel_folio_refund_create(
+async def hotel_folio_refund_create(
     folio_id: str,
     payload: CreateHotelRefundRequest,
     session: SessionContext = Depends(require_permission("hotel.finance.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return record_refund(
+        return await record_refund(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             folio_id=folio_id,
             payment_id=payload.payment_id,
@@ -724,16 +693,15 @@ def hotel_folio_refund_create(
         _raise_http_error(exc)
 
 
-@router.post("/folios/{folio_id}/close")
-def hotel_folio_close(
+async def hotel_folio_close(
     folio_id: str,
     session: SessionContext = Depends(require_permission("hotel.finance.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return close_folio(
+        return await close_folio(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             folio_id=folio_id,
         )
@@ -741,16 +709,15 @@ def hotel_folio_close(
         _raise_http_error(exc)
 
 
-@router.post("/folios/{folio_id}/issue-invoice")
-def hotel_folio_issue_invoice(
+async def hotel_folio_issue_invoice(
     folio_id: str,
     session: SessionContext = Depends(require_permission("hotel.finance.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return issue_folio_invoice(
+        return await issue_folio_invoice(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             folio_id=folio_id,
         )
@@ -758,8 +725,7 @@ def hotel_folio_issue_invoice(
         _raise_http_error(exc)
 
 
-@router.get("/staff")
-def hotel_staff(
+async def hotel_staff(
     property_id: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.staff.read")),
     db: Session = Depends(get_db_session),
@@ -767,22 +733,21 @@ def hotel_staff(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "staff_members": list_staff_members(db, tenant_slug=session.tenant_id, property_id=property_id),
+            "staff_members": await list_staff_members(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, property_id=property_id),
         }
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/staff", status_code=status.HTTP_201_CREATED)
-def hotel_staff_create(
+async def hotel_staff_create(
     payload: CreateHotelStaffMemberRequest,
     session: SessionContext = Depends(require_permission("hotel.staff.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_staff_member(
+        return await create_staff_member(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             staff_code=payload.staff_code,
@@ -799,8 +764,7 @@ def hotel_staff_create(
         _raise_http_error(exc)
 
 
-@router.get("/shifts")
-def hotel_shifts(
+async def hotel_shifts(
     property_id: str | None = None,
     staff_member_id: str | None = None,
     shift_date: date | None = None,
@@ -810,9 +774,9 @@ def hotel_shifts(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "shifts": list_shifts(
+            "shifts": await list_shifts(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 staff_member_id=staff_member_id,
                 shift_date=shift_date,
@@ -822,16 +786,15 @@ def hotel_shifts(
         _raise_http_error(exc)
 
 
-@router.post("/shifts", status_code=status.HTTP_201_CREATED)
-def hotel_shifts_create(
+async def hotel_shifts_create(
     payload: CreateHotelShiftRequest,
     session: SessionContext = Depends(require_permission("hotel.staff.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_shift(
+        return await create_shift(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             staff_member_id=payload.staff_member_id,
@@ -846,8 +809,7 @@ def hotel_shifts_create(
         _raise_http_error(exc)
 
 
-@router.get("/night-audits")
-def hotel_night_audits(
+async def hotel_night_audits(
     property_id: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.finance.read")),
     db: Session = Depends(get_db_session),
@@ -855,22 +817,21 @@ def hotel_night_audits(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "audits": list_night_audits(db, tenant_slug=session.tenant_id, property_id=property_id),
+            "audits": await list_night_audits(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, property_id=property_id),
         }
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/night-audits", status_code=status.HTTP_201_CREATED)
-def hotel_night_audits_create(
+async def hotel_night_audits_create(
     payload: CreateHotelNightAuditRequest,
     session: SessionContext = Depends(require_permission("hotel.finance.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return run_night_audit(
+        return await run_night_audit(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             audit_date=payload.audit_date,
@@ -879,8 +840,7 @@ def hotel_night_audits_create(
         _raise_http_error(exc)
 
 
-@router.get("/property-profile")
-def hotel_property_profile(
+async def hotel_property_profile(
     property_id: str,
     session: SessionContext = Depends(require_permission("hotel.properties.read")),
     db: Session = Depends(get_db_session),
@@ -892,8 +852,7 @@ def hotel_property_profile(
         _raise_http_error(exc)
 
 
-@router.put("/property-profile")
-def hotel_property_profile_upsert(
+async def hotel_property_profile_upsert(
     payload: UpsertHotelPropertyProfileRequest,
     session: SessionContext = Depends(require_permission("hotel.properties.manage")),
     db: Session = Depends(get_db_session),
@@ -932,8 +891,7 @@ def hotel_property_profile_upsert(
         _raise_http_error(exc)
 
 
-@router.get("/amenities")
-def hotel_amenity_catalog(
+async def hotel_amenity_catalog(
     property_id: str,
     session: SessionContext = Depends(require_permission("hotel.properties.read")),
     db: Session = Depends(get_db_session),
@@ -945,8 +903,7 @@ def hotel_amenity_catalog(
         _raise_http_error(exc)
 
 
-@router.put("/amenities")
-def hotel_amenity_catalog_upsert(
+async def hotel_amenity_catalog_upsert(
     payload: UpsertHotelAmenityCatalogRequest,
     session: SessionContext = Depends(require_permission("hotel.properties.manage")),
     db: Session = Depends(get_db_session),
@@ -965,8 +922,7 @@ def hotel_amenity_catalog_upsert(
         _raise_http_error(exc)
 
 
-@router.get("/nearby")
-def hotel_nearby(
+async def hotel_nearby(
     property_id: str,
     session: SessionContext = Depends(require_permission("hotel.properties.read")),
     db: Session = Depends(get_db_session),
@@ -978,8 +934,7 @@ def hotel_nearby(
         _raise_http_error(exc)
 
 
-@router.put("/nearby")
-def hotel_nearby_upsert(
+async def hotel_nearby_upsert(
     payload: UpsertHotelNearbyPlacesRequest,
     session: SessionContext = Depends(require_permission("hotel.properties.manage")),
     db: Session = Depends(get_db_session),
@@ -998,8 +953,7 @@ def hotel_nearby_upsert(
         _raise_http_error(exc)
 
 
-@router.get("/reports/summary")
-def hotel_report_summary(
+async def hotel_report_summary(
     from_date: date,
     to_date: date,
     property_id: str | None = None,
@@ -1007,9 +961,9 @@ def hotel_report_summary(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return get_report_summary(
+        return await get_report_summary(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             property_id=property_id,
             from_date=from_date,
             to_date=to_date,
@@ -1018,8 +972,7 @@ def hotel_report_summary(
         _raise_http_error(exc)
 
 
-@router.get("/housekeeping/tasks")
-def hotel_housekeeping_tasks(
+async def hotel_housekeeping_tasks(
     property_id: str | None = None,
     task_status: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.operations.read")),
@@ -1028,9 +981,9 @@ def hotel_housekeeping_tasks(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "tasks": list_housekeeping_tasks(
+            "tasks": await list_housekeeping_tasks(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 status=task_status,
             ),
@@ -1039,16 +992,15 @@ def hotel_housekeeping_tasks(
         _raise_http_error(exc)
 
 
-@router.post("/housekeeping/tasks", status_code=status.HTTP_201_CREATED)
-def hotel_housekeeping_tasks_create(
+async def hotel_housekeeping_tasks_create(
     payload: CreateHotelHousekeepingTaskRequest,
     session: SessionContext = Depends(require_permission("hotel.operations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_housekeeping_task(
+        return await create_housekeeping_task(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             room_id=payload.room_id,
@@ -1061,17 +1013,16 @@ def hotel_housekeeping_tasks_create(
         _raise_http_error(exc)
 
 
-@router.patch("/housekeeping/tasks/{task_id}/status")
-def hotel_housekeeping_tasks_update_status(
+async def hotel_housekeeping_tasks_update_status(
     task_id: str,
     payload: HotelHousekeepingStatusRequest,
     session: SessionContext = Depends(require_permission("hotel.operations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return update_housekeeping_status(
+        return await update_housekeeping_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             task_id=task_id,
             status=payload.status,
@@ -1080,8 +1031,7 @@ def hotel_housekeeping_tasks_update_status(
         _raise_http_error(exc)
 
 
-@router.get("/maintenance/tickets")
-def hotel_maintenance_tickets(
+async def hotel_maintenance_tickets(
     property_id: str | None = None,
     ticket_status: str | None = None,
     session: SessionContext = Depends(require_permission("hotel.operations.read")),
@@ -1090,9 +1040,9 @@ def hotel_maintenance_tickets(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "tickets": list_maintenance_tickets(
+            "tickets": await list_maintenance_tickets(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 property_id=property_id,
                 status=ticket_status,
             ),
@@ -1101,16 +1051,15 @@ def hotel_maintenance_tickets(
         _raise_http_error(exc)
 
 
-@router.post("/maintenance/tickets", status_code=status.HTTP_201_CREATED)
-def hotel_maintenance_tickets_create(
+async def hotel_maintenance_tickets_create(
     payload: CreateHotelMaintenanceTicketRequest,
     session: SessionContext = Depends(require_permission("hotel.operations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_maintenance_ticket(
+        return await create_maintenance_ticket(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             property_id=payload.property_id,
             room_id=payload.room_id,
@@ -1124,17 +1073,16 @@ def hotel_maintenance_tickets_create(
         _raise_http_error(exc)
 
 
-@router.patch("/maintenance/tickets/{ticket_id}/status")
-def hotel_maintenance_tickets_update_status(
+async def hotel_maintenance_tickets_update_status(
     ticket_id: str,
     payload: HotelMaintenanceStatusRequest,
     session: SessionContext = Depends(require_permission("hotel.operations.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return update_maintenance_status(
+        return await update_maintenance_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             ticket_id=ticket_id,
             status=payload.status,

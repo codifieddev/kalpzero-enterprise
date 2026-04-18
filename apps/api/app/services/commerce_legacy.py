@@ -78,20 +78,20 @@ def _attribute_value_signature(value: object | None) -> object:
 
 def _serialize_category(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "slug": model["slug"],
         "description": model.get("description"),
-        "parent_category_id": model.get("parent_category_id"),
+        "parent_category_id": str(model["parent_category_id"]) if model.get("parent_category_id") else None,
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_brand(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "slug": model["slug"],
         "code": model.get("code"),
@@ -103,8 +103,8 @@ def _serialize_brand(model) -> dict[str, object]:
 
 def _serialize_vendor(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "slug": model["slug"],
         "code": model.get("code"),
@@ -119,8 +119,8 @@ def _serialize_vendor(model) -> dict[str, object]:
 
 def _serialize_collection(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "slug": model["slug"],
         "description": model.get("description"),
@@ -132,8 +132,8 @@ def _serialize_collection(model) -> dict[str, object]:
 
 def _serialize_warehouse(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "slug": model["slug"],
         "code": model.get("code"),
@@ -151,10 +151,10 @@ def _serialize_warehouse_stock(model) -> dict[str, object]:
     low_stock_threshold = model.get("low_stock_threshold", 0)
     available_quantity = on_hand - reserved
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "warehouse_id": model["warehouse_id"],
-        "variant_id": model["variant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "warehouse_id": str(model["warehouse_id"]),
+        "variant_id": str(model["variant_id"]),
         "on_hand_quantity": on_hand,
         "reserved_quantity": reserved,
         "available_quantity": available_quantity,
@@ -166,26 +166,26 @@ def _serialize_warehouse_stock(model) -> dict[str, object]:
 
 def _serialize_stock_ledger_entry(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "warehouse_id": model["warehouse_id"],
-        "variant_id": model["variant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "warehouse_id": str(model["warehouse_id"]),
+        "variant_id": str(model["variant_id"]),
         "entry_type": model["entry_type"],
         "quantity_delta": model["quantity_delta"],
         "balance_after": model["balance_after"],
         "reserved_after": model["reserved_after"],
         "reference_type": model.get("reference_type"),
-        "reference_id": model.get("reference_id"),
+        "reference_id": str(model["reference_id"]) if model.get("reference_id") else None,
         "notes": model.get("notes"),
-        "recorded_by_user_id": model["recorded_by_user_id"],
+        "recorded_by_user_id": str(model["recorded_by_user_id"]),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_tax_profile(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "code": model.get("code"),
         "description": model.get("description"),
@@ -198,40 +198,40 @@ def _serialize_tax_profile(model) -> dict[str, object]:
 
 def _serialize_price_list_item(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "price_list_id": model["price_list_id"],
-        "variant_id": model["variant_id"],
+        "id": str(model["id"]),
+        "price_list_id": str(model["price_list_id"]),
+        "variant_id": str(model["variant_id"]),
         "price_minor": model["price_minor"],
     }
 
 
 def _serialize_price_list(model, items_by_price_list: dict[str, list[dict[str, object]]]) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "slug": model["slug"],
         "currency": model["currency"],
         "customer_segment": model.get("customer_segment"),
         "description": model.get("description"),
         "status": model["status"],
-        "items": items_by_price_list.get(model["id"], []),
+        "items": items_by_price_list.get(str(model["id"]), []),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_coupon(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "code": model["code"],
         "description": model.get("description"),
         "discount_type": model["discount_type"],
         "discount_value": model["discount_value"],
         "minimum_subtotal_minor": model.get("minimum_subtotal_minor", 0),
         "maximum_discount_minor": model.get("maximum_discount_minor"),
-        "applicable_category_ids": model.get("applicable_category_ids", []),
-        "applicable_variant_ids": model.get("applicable_variant_ids", []),
+        "applicable_category_ids": [str(cid) for cid in model.get("applicable_category_ids", [])],
+        "applicable_variant_ids": [str(vid) for vid in model.get("applicable_variant_ids", [])],
         "status": model["status"],
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
@@ -239,9 +239,9 @@ def _serialize_coupon(model) -> dict[str, object]:
 
 def _serialize_payment(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "order_id": model["order_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "order_id": str(model["order_id"]),
         "amount_minor": model["amount_minor"],
         "currency": model["currency"],
         "provider": model["provider"],
@@ -250,34 +250,34 @@ def _serialize_payment(model) -> dict[str, object]:
         "reference": model.get("reference"),
         "notes": model.get("notes"),
         "received_at": model.get("received_at"),
-        "recorded_by_user_id": model["recorded_by_user_id"],
+        "recorded_by_user_id": str(model["recorded_by_user_id"]),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_refund(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "order_id": model["order_id"],
-        "payment_id": model["payment_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "order_id": str(model["order_id"]),
+        "payment_id": str(model["payment_id"]),
         "amount_minor": model["amount_minor"],
         "currency": model["currency"],
         "reason": model.get("reason"),
         "reference": model.get("reference"),
         "status": model["status"],
         "refunded_at": model.get("refunded_at"),
-        "recorded_by_user_id": model["recorded_by_user_id"],
+        "recorded_by_user_id": str(model["recorded_by_user_id"]),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_invoice(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "order_id": model["order_id"],
-        "customer_id": model["customer_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "order_id": str(model["order_id"]),
+        "customer_id": str(model["customer_id"]),
         "invoice_number": model["invoice_number"],
         "status": model["status"],
         "currency": model["currency"],
@@ -286,20 +286,20 @@ def _serialize_invoice(model) -> dict[str, object]:
         "tax_minor": model["tax_minor"],
         "total_minor": model["total_minor"],
         "issued_at": model.get("issued_at"),
-        "issued_by_user_id": model["issued_by_user_id"],
+        "issued_by_user_id": str(model["issued_by_user_id"]),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_return_line(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "return_id": model["return_id"],
-        "order_line_id": model.get("order_line_id"),
-        "variant_id": model["variant_id"],
+        "id": str(model["id"]),
+        "return_id": str(model["return_id"]),
+        "order_line_id": str(model["order_line_id"]) if model.get("order_line_id") else None,
+        "variant_id": str(model["variant_id"]),
         "quantity": model["quantity"],
         "resolution_type": model["resolution_type"],
-        "replacement_variant_id": model.get("replacement_variant_id"),
+        "replacement_variant_id": str(model["replacement_variant_id"]) if model.get("replacement_variant_id") else None,
         "restock_on_receive": model.get("restock_on_receive", False),
         "line_amount_minor": model.get("line_amount_minor", 0),
         "notes": model.get("notes"),
@@ -309,9 +309,9 @@ def _serialize_return_line(model) -> dict[str, object]:
 
 def _serialize_return(model, lines_by_return: dict[str, list[dict[str, object]]]) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "order_id": model["order_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "order_id": str(model["order_id"]),
         "return_number": model["return_number"],
         "status": model["status"],
         "reason_summary": model.get("reason_summary"),
@@ -321,20 +321,20 @@ def _serialize_return(model, lines_by_return: dict[str, list[dict[str, object]]]
         "approved_at": model.get("approved_at"),
         "received_at": model.get("received_at"),
         "closed_at": model.get("closed_at"),
-        "created_by_user_id": model["created_by_user_id"],
-        "closed_by_user_id": model.get("closed_by_user_id"),
-        "lines": lines_by_return.get(model["id"], []),
+        "created_by_user_id": str(model["created_by_user_id"]),
+        "closed_by_user_id": str(model["closed_by_user_id"]) if model.get("closed_by_user_id") else None,
+        "lines": lines_by_return.get(str(model["id"]), []),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_settlement_entry(model, *, payment=None, refund=None) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "settlement_id": model["settlement_id"],
+        "id": str(model["id"]),
+        "settlement_id": str(model["settlement_id"]),
         "entry_type": model["entry_type"],
-        "payment_id": model.get("payment_id"),
-        "refund_id": model.get("refund_id"),
+        "payment_id": str(model["payment_id"]) if model.get("payment_id") else None,
+        "refund_id": str(model["refund_id"]) if model.get("refund_id") else None,
         "amount_minor": model["amount_minor"],
         "label": model.get("label"),
         "notes": model.get("notes"),
@@ -346,8 +346,8 @@ def _serialize_settlement_entry(model, *, payment=None, refund=None) -> dict[str
 
 def _serialize_settlement(model, entries_by_settlement: dict[str, list[dict[str, object]]]) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "settlement_number": model["settlement_number"],
         "provider": model["provider"],
         "settlement_reference": model.get("settlement_reference"),
@@ -362,17 +362,17 @@ def _serialize_settlement(model, entries_by_settlement: dict[str, list[dict[str,
         "reconciled_at": model.get("reconciled_at"),
         "closed_at": model.get("closed_at"),
         "notes": model.get("notes"),
-        "created_by_user_id": model["created_by_user_id"],
-        "closed_by_user_id": model.get("closed_by_user_id"),
-        "entries": entries_by_settlement.get(model["id"], []),
+        "created_by_user_id": str(model["created_by_user_id"]),
+        "closed_by_user_id": str(model["closed_by_user_id"]) if model.get("closed_by_user_id") else None,
+        "entries": entries_by_settlement.get(str(model["id"]), []),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_attribute(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "code": model["code"],
         "slug": model["slug"],
         "label": model["label"],
@@ -392,12 +392,12 @@ def _serialize_attribute(model) -> dict[str, object]:
 
 def _serialize_attribute_set(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "slug": model["slug"],
         "description": model.get("description"),
-        "attribute_ids": model.get("attribute_ids", []),
+        "attribute_ids": [str(aid) for aid in model.get("attribute_ids", [])],
         "vertical_bindings": model.get("vertical_bindings", []),
         "status": model["status"],
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
@@ -405,19 +405,19 @@ def _serialize_attribute_set(model) -> dict[str, object]:
 
 
 def _serialize_attribute_value(model) -> dict[str, object]:
-    return {"attribute_id": model["attribute_id"], "value": model.get("value_json")}
+    return {"attribute_id": str(model["attribute_id"]), "value": model.get("value_json")}
 
 
 def _serialize_variant(model, attribute_values_by_variant: dict[str, list[dict[str, object]]]) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "product_id": model["product_id"],
+        "id": str(model["id"]),
+        "product_id": str(model["product_id"]),
         "sku": model["sku"],
         "label": model.get("label"),
         "price_minor": model.get("price_minor", 0),
         "currency": model.get("currency"),
         "inventory_quantity": model.get("inventory_quantity", 0),
-        "attribute_values": attribute_values_by_variant.get(model["id"], []),
+        "attribute_values": attribute_values_by_variant.get(str(model["id"]), []),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
@@ -428,31 +428,31 @@ def _serialize_product(
     product_attribute_values_by_product: dict[str, list[dict[str, object]]],
 ) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
         "name": model["name"],
         "slug": model["slug"],
         "description": model.get("description"),
-        "brand_id": model.get("brand_id"),
-        "vendor_id": model.get("vendor_id"),
-        "collection_ids": model.get("collection_ids", []),
-        "attribute_set_id": model.get("attribute_set_id"),
-        "category_ids": model.get("category_ids", []),
+        "brand_id": str(model["brand_id"]) if model.get("brand_id") else None,
+        "vendor_id": str(model["vendor_id"]) if model.get("vendor_id") else None,
+        "collection_ids": [str(cid) for cid in model.get("collection_ids", [])],
+        "attribute_set_id": str(model["attribute_set_id"]) if model.get("attribute_set_id") else None,
+        "category_ids": [str(cid) for cid in model.get("category_ids", [])],
         "seo_title": model.get("seo_title"),
         "seo_description": model.get("seo_description"),
         "status": model["status"],
-        "product_attributes": product_attribute_values_by_product.get(model["id"], []),
-        "variants": variants_by_product.get(model["id"], []),
+        "product_attributes": product_attribute_values_by_product.get(str(model["id"]), []),
+        "variants": variants_by_product.get(str(model["id"]), []),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_order_line(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "product_id": model["product_id"],
-        "variant_id": model["variant_id"],
-        "allocated_warehouse_id": model.get("allocated_warehouse_id"),
+        "id": str(model["id"]),
+        "product_id": str(model["product_id"]),
+        "variant_id": str(model["variant_id"]),
+        "allocated_warehouse_id": str(model["allocated_warehouse_id"]) if model.get("allocated_warehouse_id") else None,
         "quantity": model["quantity"],
         "fulfilled_quantity": model.get("fulfilled_quantity", 0),
         "unit_price_minor": model["unit_price_minor"],
@@ -462,10 +462,10 @@ def _serialize_order_line(model) -> dict[str, object]:
 
 def _serialize_fulfillment_line(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "fulfillment_id": model["fulfillment_id"],
-        "order_line_id": model["order_line_id"],
-        "variant_id": model["variant_id"],
+        "id": str(model["id"]),
+        "fulfillment_id": str(model["fulfillment_id"]),
+        "order_line_id": str(model["order_line_id"]),
+        "variant_id": str(model["variant_id"]),
         "quantity": model["quantity"],
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
@@ -473,26 +473,26 @@ def _serialize_fulfillment_line(model) -> dict[str, object]:
 
 def _serialize_fulfillment(model, lines_by_fulfillment: dict[str, list[dict[str, object]]]) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "order_id": model["order_id"],
-        "warehouse_id": model["warehouse_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "order_id": str(model["order_id"]),
+        "warehouse_id": str(model["warehouse_id"]),
         "fulfillment_number": model["fulfillment_number"],
         "status": model["status"],
-        "created_by_user_id": model["created_by_user_id"],
+        "created_by_user_id": str(model["created_by_user_id"]),
         "packed_at": model.get("packed_at"),
         "shipped_at": model.get("shipped_at"),
         "delivered_at": model.get("delivered_at"),
-        "lines": lines_by_fulfillment.get(model["id"], []),
+        "lines": lines_by_fulfillment.get(str(model["id"]), []),
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
 
 
 def _serialize_shipment(model) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "fulfillment_id": model["fulfillment_id"],
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "fulfillment_id": str(model["fulfillment_id"]),
         "carrier": model.get("carrier"),
         "service_level": model.get("service_level"),
         "tracking_number": model.get("tracking_number"),
@@ -514,11 +514,11 @@ def _serialize_order(
     returns: list | None = None,
 ) -> dict[str, object]:
     return {
-        "id": model["id"],
-        "tenant_id": model["tenant_id"],
-        "customer_id": model["customer_id"],
-        "price_list_id": model.get("price_list_id"),
-        "tax_profile_id": model.get("tax_profile_id"),
+        "id": str(model["id"]),
+        "tenant_id": str(model["tenant_id"]),
+        "customer_id": str(model["customer_id"]),
+        "price_list_id": str(model["price_list_id"]) if model.get("price_list_id") else None,
+        "tax_profile_id": str(model["tax_profile_id"]) if model.get("tax_profile_id") else None,
         "coupon_code": model.get("coupon_code"),
         "status": model["status"],
         "currency": model["currency"],
@@ -534,7 +534,7 @@ def _serialize_order(
         "invoice_issued_at": model.get("invoice_issued_at"),
         "inventory_reserved": model.get("inventory_reserved", False),
         "placed_at": model.get("placed_at"),
-        "lines": lines_by_order.get(model["id"], []),
+        "lines": lines_by_order.get(str(model["id"]), []),
         "payments": [_serialize_payment(item) for item in payments] if payments is not None else None,
         "refunds": [_serialize_refund(item) for item in refunds] if refunds is not None else None,
         "invoices": [_serialize_invoice(item) for item in invoices] if invoices is not None else None,
@@ -567,12 +567,12 @@ def _audit(
 def _outbox_order(db: Session, *, tenant_id: str, order) -> None:
     platform_repository.enqueue_outbox_event(
         db,
-        tenant_id=tenant_id,
-        aggregate_id=order["id"],
+        tenant_id=str(tenant_id),
+        aggregate_id=str(order["id"]),
         event_name="commerce.order.created",
         payload_json={
-            "order_id": order["id"],
-            "customer_id": order["customer_id"],
+            "order_id": str(order["id"]),
+            "customer_id": str(order["customer_id"]),
             "status": order["status"],
             "total_minor": order["total_minor"],
         },
@@ -582,12 +582,12 @@ def _outbox_order(db: Session, *, tenant_id: str, order) -> None:
 def _outbox_invoice(db: Session, *, tenant_id: str, order) -> None:
     platform_repository.enqueue_outbox_event(
         db,
-        tenant_id=tenant_id,
-        aggregate_id=order["id"],
+        tenant_id=str(tenant_id),
+        aggregate_id=str(order["id"]),
         event_name="invoice.issued",
         payload_json={
-            "order_id": order["id"],
-            "customer_id": order["customer_id"],
+            "order_id": str(order["id"]),
+            "customer_id": str(order["customer_id"]),
             "invoice_number": order.get("invoice_number"),
             "total_minor": order["total_minor"],
         },
@@ -597,13 +597,13 @@ def _outbox_invoice(db: Session, *, tenant_id: str, order) -> None:
 def _outbox_fulfillment(db: Session, *, tenant_id: str, fulfillment) -> None:
     platform_repository.enqueue_outbox_event(
         db,
-        tenant_id=tenant_id,
-        aggregate_id=fulfillment["id"],
+        tenant_id=str(tenant_id),
+        aggregate_id=str(fulfillment["id"]),
         event_name="commerce.fulfillment.updated",
         payload_json={
-            "fulfillment_id": fulfillment["id"],
-            "order_id": fulfillment["order_id"],
-            "warehouse_id": fulfillment["warehouse_id"],
+            "fulfillment_id": str(fulfillment["id"]),
+            "order_id": str(fulfillment["order_id"]),
+            "warehouse_id": str(fulfillment["warehouse_id"]),
             "status": fulfillment["status"],
         },
     )
@@ -612,12 +612,12 @@ def _outbox_fulfillment(db: Session, *, tenant_id: str, fulfillment) -> None:
 def _outbox_shipment(db: Session, *, tenant_id: str, shipment) -> None:
     platform_repository.enqueue_outbox_event(
         db,
-        tenant_id=tenant_id,
-        aggregate_id=shipment.id,
+        tenant_id=str(tenant_id),
+        aggregate_id=str(shipment.id),
         event_name="commerce.shipment.updated",
         payload_json={
-            "shipment_id": shipment.id,
-            "fulfillment_id": shipment.fulfillment_id,
+            "shipment_id": str(shipment.id),
+            "fulfillment_id": str(shipment.fulfillment_id),
             "tracking_number": shipment.tracking_number,
             "status": shipment.status,
         },
@@ -627,12 +627,12 @@ def _outbox_shipment(db: Session, *, tenant_id: str, shipment) -> None:
 def _outbox_return(db: Session, *, tenant_id: str, return_request) -> None:
     platform_repository.enqueue_outbox_event(
         db,
-        tenant_id=tenant_id,
-        aggregate_id=return_request.id,
+        tenant_id=str(tenant_id),
+        aggregate_id=str(return_request.id),
         event_name="commerce.return.updated",
         payload_json={
-            "return_id": return_request.id,
-            "order_id": return_request.order_id,
+            "return_id": str(return_request.id),
+            "order_id": str(return_request.order_id),
             "return_number": return_request.return_number,
             "status": return_request.status,
         },
@@ -642,11 +642,11 @@ def _outbox_return(db: Session, *, tenant_id: str, return_request) -> None:
 def _outbox_settlement(db: Session, *, tenant_id: str, settlement) -> None:
     platform_repository.enqueue_outbox_event(
         db,
-        tenant_id=tenant_id,
-        aggregate_id=settlement.id,
+        tenant_id=str(tenant_id),
+        aggregate_id=str(settlement.id),
         event_name="commerce.settlement.updated",
         payload_json={
-            "settlement_id": settlement.id,
+            "settlement_id": str(settlement.id),
             "settlement_number": settlement.settlement_number,
             "provider": settlement.provider,
             "status": settlement.status,
@@ -1069,7 +1069,7 @@ def get_overview(db: Session, *, tenant_slug: str) -> dict[str, object]:
 
     return {
         "tenant_id": tenant.slug,
-        "tenant_record_id": tenant.id,
+        "tenant_record_id": str(tenant.id),
         "categories": len(categories),
         "brands": len(brands),
         "vendors": len(vendors),
@@ -1149,11 +1149,11 @@ def create_brand(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.brand.created",
         subject_type="commerce_brand",
-        subject_id=brand["id"],
+        subject_id=str(brand["id"]),
         metadata={"slug": normalized_slug, "code": normalized_code},
     )
     db.commit()
@@ -1203,11 +1203,11 @@ def create_vendor(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.vendor.created",
         subject_type="commerce_vendor",
-        subject_id=vendor["id"],
+        subject_id=str(vendor["id"]),
         metadata={"slug": normalized_slug, "code": normalized_code},
     )
     db.commit()
@@ -1265,11 +1265,11 @@ def create_warehouse(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.warehouse.created",
         subject_type="commerce_warehouse",
-        subject_id=warehouse["id"],
+        subject_id=str(warehouse["id"]),
         metadata={"slug": normalized_slug, "code": normalized_code, "is_default": is_default},
     )
     db.commit()
@@ -1401,14 +1401,14 @@ def adjust_stock(
     _sync_variant_inventory_from_stocks(db, tenant_id=tenant.id, variant_ids=[variant["id"]])
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.stock.adjusted",
         subject_type="commerce_warehouse_stock",
-        subject_id=stock["id"],
+        subject_id=str(stock["id"]),
         metadata={
-            "warehouse_id": warehouse["id"],
-            "variant_id": variant["id"],
+            "warehouse_id": str(warehouse["id"]),
+            "variant_id": str(variant["id"]),
             "quantity_delta": quantity_delta,
             "on_hand_quantity": stock["on_hand_quantity"],
             "reserved_quantity": stock["reserved_quantity"],
@@ -1447,11 +1447,11 @@ def create_collection(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.collection.created",
         subject_type="commerce_collection",
-        subject_id=collection["id"],
+        subject_id=str(collection["id"]),
         metadata={"slug": normalized_slug, "sort_order": sort_order},
     )
     db.commit()
@@ -1495,11 +1495,11 @@ def create_tax_profile(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.tax_profile.created",
         subject_type="commerce_tax_profile",
-        subject_id=tax_profile["id"],
+        subject_id=str(tax_profile["id"]),
         metadata={"code": normalized_code, "rule_count": len(normalized_rules)},
     )
     db.commit()
@@ -1654,11 +1654,11 @@ def create_coupon(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.coupon.created",
         subject_type="commerce_coupon",
-        subject_id=coupon["id"],
+        subject_id=str(coupon["id"]),
         metadata={
             "code": normalized_code,
             "discount_type": discount_type,
@@ -1698,11 +1698,11 @@ def create_category(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.category.created",
         subject_type="commerce_category",
-        subject_id=category["id"],
+        subject_id=str(category["id"]),
         metadata={"slug": slug},
     )
     db.commit()
@@ -1768,11 +1768,11 @@ def create_attribute(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.attribute.created",
         subject_type="commerce_attribute",
-        subject_id=attribute["id"],
+        subject_id=str(attribute["id"]),
         metadata={"code": normalized_code, "scope": scope, "value_type": value_type},
     )
     db.commit()
@@ -1829,11 +1829,11 @@ def create_attribute_set(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.attribute_set.created",
         subject_type="commerce_attribute_set",
-        subject_id=attribute_set["id"],
+        subject_id=str(attribute_set["id"]),
         metadata={"slug": normalized_slug, "attribute_count": len(deduped_attribute_ids)},
     )
     db.commit()
@@ -2064,18 +2064,18 @@ def create_product(
 
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.product.created",
         subject_type="commerce_product",
-        subject_id=product["id"],
+        subject_id=str(product["id"]),
         metadata={
             "slug": normalized_slug,
             "variant_count": len(created_variants),
-            "attribute_set_id": product.get("attribute_set_id"),
+            "attribute_set_id": str(product.get("attribute_set_id")) if product.get("attribute_set_id") else None,
             "product_attribute_count": len(created_product_attribute_values),
-            "brand_id": product.get("brand_id"),
-            "vendor_id": product.get("vendor_id"),
+            "brand_id": str(product.get("brand_id")) if product.get("brand_id") else None,
+            "vendor_id": str(product.get("vendor_id")) if product.get("vendor_id") else None,
             "collection_count": len(product.get("collection_ids", [])),
         },
     )
@@ -2325,17 +2325,17 @@ def _reserve_order_lines_against_warehouses(
 
         commerce_repository.create_stock_ledger_entry(
             db,
-            tenant_id=tenant_id,
-            warehouse_id=stock["warehouse_id"],
-            variant_id=variant_id,
+            tenant_id=str(tenant_id),
+            warehouse_id=str(stock["warehouse_id"]),
+            variant_id=str(variant_id),
             entry_type="reservation",
             quantity_delta=0,
             balance_after=stock.get("on_hand_quantity", 0),
             reserved_after=new_res,
             reference_type="commerce_order",
-            reference_id=order["id"],
+            reference_id=str(order["id"]),
             notes=f"Reserved stock for order {order['id']}.",
-            recorded_by_user_id=actor_user_id,
+            recorded_by_user_id=str(actor_user_id),
         )
     _sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=variant_ids)
 
@@ -2371,17 +2371,17 @@ def _release_order_lines_from_warehouses(
 
         commerce_repository.create_stock_ledger_entry(
             db,
-            tenant_id=tenant_id,
-            warehouse_id=allocated_wh_id,
-            variant_id=line["variant_id"],
+            tenant_id=str(tenant_id),
+            warehouse_id=str(allocated_wh_id),
+            variant_id=str(line["variant_id"]),
             entry_type="release",
             quantity_delta=0,
             balance_after=stock.get("on_hand_quantity", 0),
             reserved_after=new_res,
             reference_type="commerce_order",
-            reference_id=order["id"],
+            reference_id=str(order["id"]),
             notes=f"Released reserved stock for cancelled order {order['id']}.",
-            recorded_by_user_id=actor_user_id,
+            recorded_by_user_id=str(actor_user_id),
         )
         touched_variant_ids.append(line["variant_id"])
     _sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=touched_variant_ids)
@@ -2501,17 +2501,17 @@ def _restock_return_inventory(
 
         commerce_repository.create_stock_ledger_entry(
             db,
-            tenant_id=tenant_id,
-            warehouse_id=warehouse["id"],
-            variant_id=line["variant_id"],
+            tenant_id=str(tenant_id),
+            warehouse_id=str(warehouse["id"]),
+            variant_id=str(line["variant_id"]),
             entry_type="restock",
             quantity_delta=line.get("quantity", 0),
             balance_after=new_on_hand,
             reserved_after=current_reserved,
             reference_type="commerce_return",
-            reference_id=return_request["id"],
+            reference_id=str(return_request["id"]),
             notes=f"Restocked inventory from return {return_request.get('return_number')}.",
-            recorded_by_user_id=actor_user_id,
+            recorded_by_user_id=str(actor_user_id),
         )
         touched_variant_ids.append(line["variant_id"])
     _sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=touched_variant_ids)
@@ -2701,13 +2701,13 @@ def create_order(
 
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.order.created",
         subject_type="commerce_order",
-        subject_id=order["id"],
+        subject_id=str(order["id"]),
         metadata={
-            "customer_id": customer_id,
+            "customer_id": str(customer_id),
             "status": status,
             "subtotal_minor": subtotal_minor,
             "discount_minor": discount_minor,
@@ -2763,12 +2763,12 @@ def record_payment(
     _recalculate_order_finance(db, order)
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.payment.recorded",
         subject_type="commerce_payment",
-        subject_id=payment["id"],
-        metadata={"order_id": order["id"], "amount_minor": amount_minor, "payment_method": payment_method, "status": status},
+        subject_id=str(payment["id"]),
+        metadata={"order_id": str(order["id"]), "amount_minor": amount_minor, "payment_method": payment_method, "status": status},
     )
     db.commit()
     return get_order_finance_detail(db, tenant_slug=tenant_slug, order_id=order_id)
@@ -2820,12 +2820,12 @@ def record_refund(
     _recalculate_order_finance(db, order)
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.refund.recorded",
         subject_type="commerce_refund",
-        subject_id=refund["id"],
-        metadata={"order_id": order["id"], "payment_id": payment["id"], "amount_minor": amount_minor},
+        subject_id=str(refund["id"]),
+        metadata={"order_id": str(order["id"]), "payment_id": str(payment["id"]), "amount_minor": amount_minor},
     )
     db.commit()
     return get_order_finance_detail(db, tenant_slug=tenant_slug, order_id=order_id)
@@ -2929,13 +2929,13 @@ def create_return(
 
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.return.created",
         subject_type="commerce_return",
-        subject_id=created_return["id"],
+        subject_id=str(created_return["id"]),
         metadata={
-            "order_id": order["id"],
+            "order_id": str(order["id"]),
             "return_number": created_return.get("return_number"),
             "line_count": len(created_lines),
         },
@@ -3001,11 +3001,11 @@ def update_return_status(
     
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.return.updated",
         subject_type="commerce_return",
-        subject_id=return_request["id"],
+        subject_id=str(return_request["id"]),
         metadata={"status": normalized_status, "return_number": return_request.return_number},
     )
     _outbox_return(db, tenant_id=tenant.id, return_request=return_request)
@@ -3108,10 +3108,10 @@ def create_settlement(
     for payment in payments:
         commerce_repository.create_settlement_entry(
             db,
-            tenant_id=tenant.id,
-            settlement_id=settlement["id"],
+            tenant_id=str(tenant.id),
+            settlement_id=str(settlement["id"]),
             entry_type="payment",
-            payment_id=payment["id"],
+            payment_id=str(payment["id"]),
             refund_id=None,
             amount_minor=payment.get("amount_minor", 0),
             label=f"Payment {payment.get('reference') or payment['id']}",
@@ -3120,11 +3120,11 @@ def create_settlement(
     for refund in refunds:
         commerce_repository.create_settlement_entry(
             db,
-            tenant_id=tenant.id,
-            settlement_id=settlement["id"],
+            tenant_id=str(tenant.id),
+            settlement_id=str(settlement["id"]),
             entry_type="refund",
             payment_id=None,
-            refund_id=refund["id"],
+            refund_id=str(refund["id"]),
             amount_minor=refund.get("amount_minor", 0),
             label=f"Refund {refund.get('reference') or refund['id']}",
             notes=None,
@@ -3132,8 +3132,8 @@ def create_settlement(
     if fees_minor > 0:
         commerce_repository.create_settlement_entry(
             db,
-            tenant_id=tenant.id,
-            settlement_id=settlement.id,
+            tenant_id=str(tenant.id),
+            settlement_id=str(settlement["id"]),
             entry_type="fee",
             payment_id=None,
             refund_id=None,
@@ -3144,8 +3144,8 @@ def create_settlement(
     if adjustments_minor != 0:
         commerce_repository.create_settlement_entry(
             db,
-            tenant_id=tenant.id,
-            settlement_id=settlement.id,
+            tenant_id=str(tenant.id),
+            settlement_id=str(settlement["id"]),
             entry_type="adjustment",
             payment_id=None,
             refund_id=None,
@@ -3156,11 +3156,11 @@ def create_settlement(
 
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.settlement.created",
         subject_type="commerce_settlement",
-        subject_id=settlement["id"],
+        subject_id=str(settlement["id"]),
         metadata={
             "settlement_number": settlement.get("settlement_number"),
             "provider": normalized_provider,
@@ -3207,11 +3207,11 @@ def update_settlement_status(
 
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.settlement.updated",
         subject_type="commerce_settlement",
-        subject_id=settlement["id"],
+        subject_id=str(settlement["id"]),
         metadata={"status": normalized_status, "settlement_number": settlement.get("settlement_number")},
     )
     _outbox_settlement(db, tenant_id=tenant.id, settlement=settlement)
@@ -3264,12 +3264,12 @@ def issue_order_invoice(
     )
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.invoice.issued",
         subject_type="commerce_order",
-        subject_id=order["id"],
-        metadata={"invoice_number": invoice["invoice_number"], "customer_id": order.get("customer_id")},
+        subject_id=str(order["id"]),
+        metadata={"invoice_number": invoice["invoice_number"], "customer_id": str(order.get("customer_id"))},
     )
     _outbox_invoice(db, tenant_id=tenant.id, order=order)
     db.commit()
@@ -3384,14 +3384,14 @@ def create_fulfillment(
     ]
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.fulfillment.created",
         subject_type="commerce_fulfillment",
-        subject_id=fulfillment["id"],
+        subject_id=str(fulfillment["id"]),
         metadata={
-            "order_id": order["id"],
-            "warehouse_id": fulfillment.get("warehouse_id"),
+            "order_id": str(order["id"]),
+            "warehouse_id": str(fulfillment.get("warehouse_id")) if fulfillment.get("warehouse_id") else None,
             "line_count": len(created_lines),
         },
     )
@@ -3435,11 +3435,11 @@ def update_fulfillment_status(
     lines = commerce_repository.list_fulfillment_lines(db, tenant_id=tenant.id, fulfillment_ids=[fulfillment["id"]])
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.fulfillment.updated",
         subject_type="commerce_fulfillment",
-        subject_id=fulfillment["id"],
+        subject_id=str(fulfillment["id"]),
         metadata={"status": fulfillment.get("status")},
     )
     _outbox_fulfillment(db, tenant_id=tenant.id, fulfillment=fulfillment)
@@ -3511,17 +3511,17 @@ def create_shipment(
 
             commerce_repository.create_stock_ledger_entry(
                 db,
-                tenant_id=tenant.id,
-                warehouse_id=wh_id,
-                variant_id=line["variant_id"],
+                tenant_id=str(tenant.id),
+                warehouse_id=str(wh_id),
+                variant_id=str(line["variant_id"]),
                 entry_type="fulfillment",
                 quantity_delta=-line_qty,
                 balance_after=new_on_hand,
                 reserved_after=new_res,
                 reference_type="commerce_fulfillment",
-                reference_id=fulfillment["id"],
+                reference_id=str(fulfillment["id"]),
                 notes=f"Shipped fulfillment {fulfillment.get('fulfillment_number')}.",
-                recorded_by_user_id=actor_user_id,
+                recorded_by_user_id=str(actor_user_id),
             )
             touched_variant_ids.append(line["variant_id"])
         
@@ -3552,13 +3552,13 @@ def create_shipment(
     _mark_order_fulfillment_state(db, tenant_id=tenant.id, order_lines=order_lines, order=order)
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.shipment.created",
         subject_type="commerce_shipment",
-        subject_id=shipment["id"],
+        subject_id=str(shipment["id"]),
         metadata={
-            "fulfillment_id": fulfillment["id"],
+            "fulfillment_id": str(fulfillment["id"]),
             "tracking_number": shipment.get("tracking_number"),
             "carrier": shipment.get("carrier"),
         },
@@ -3599,11 +3599,11 @@ def update_shipment_status(
 
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.shipment.updated",
         subject_type="commerce_shipment",
-        subject_id=shipment["id"],
+        subject_id=str(shipment["id"]),
         metadata={"status": shipment.get("status"), "tracking_number": shipment.get("tracking_number")},
     )
     _outbox_shipment(db, tenant_id=tenant.id, shipment=shipment)
@@ -3677,11 +3677,11 @@ def update_order_status(
     order = _order_or_raise(db, tenant_id=tenant.id, order_id=order_id)
     _audit(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="commerce.order.updated",
         subject_type="commerce_order",
-        subject_id=order["id"],
+        subject_id=str(order["id"]),
         metadata={"status": status},
     )
     db.commit()

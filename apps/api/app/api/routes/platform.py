@@ -61,8 +61,6 @@ def agencies(
     _: SessionContext = Depends(require_permission("platform.agencies.manage")),
     db: Session = Depends(get_db_session),
 ):
-    print("db",db)
-    print("agencies",list_all_agencies(db))
     return {"agencies": list_all_agencies(db)}
 
 
@@ -160,7 +158,7 @@ def storage_topology(
 
 @router.get("/onboarding-readiness")
 def onboarding_readiness(
-    requested_vertical_packs: list[str] | None = Query(default=None),
+    requested_vertical_pack: str | None = Query(default=None),
     infra_mode: str | None = None,
     dedicated_profile_id: str | None = None,
     _: SessionContext = Depends(require_permission("platform.tenants.manage")),
@@ -168,7 +166,7 @@ def onboarding_readiness(
 ):
     return get_onboarding_readiness_report(
         settings,
-        requested_vertical_packs=requested_vertical_packs,
+        requested_vertical_pack=requested_vertical_pack,
         infra_mode=infra_mode,
         dedicated_profile_id=dedicated_profile_id,
     )

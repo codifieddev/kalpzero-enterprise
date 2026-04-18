@@ -7,7 +7,6 @@ from app.models.base import TimestampDocument
 
 
 class CommerceCategory(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     slug: Indexed(str)
     description: Optional[str] = None
@@ -18,7 +17,6 @@ class CommerceCategory(TimestampDocument):
 
 
 class CommerceBrand(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     slug: Indexed(str)
     code: Indexed(str)
@@ -30,7 +28,6 @@ class CommerceBrand(TimestampDocument):
 
 
 class CommerceVendor(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     slug: Indexed(str)
     code: Indexed(str)
@@ -45,7 +42,6 @@ class CommerceVendor(TimestampDocument):
 
 
 class CommerceCollection(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     slug: Indexed(str)
     description: Optional[str] = None
@@ -57,7 +53,6 @@ class CommerceCollection(TimestampDocument):
 
 
 class CommerceAttribute(TimestampDocument):
-    tenant_id: Indexed(str)
     code: Indexed(str)
     slug: Indexed(str)
     label: str
@@ -77,7 +72,6 @@ class CommerceAttribute(TimestampDocument):
 
 
 class CommerceAttributeSet(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     slug: Indexed(str)
     description: Optional[str] = None
@@ -90,7 +84,6 @@ class CommerceAttributeSet(TimestampDocument):
 
 
 class CommerceProduct(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     slug: Indexed(str)
     description: Optional[str] = None
@@ -108,7 +101,6 @@ class CommerceProduct(TimestampDocument):
 
 
 class CommerceVariant(TimestampDocument):
-    tenant_id: Indexed(str)
     product_id: Indexed(str)
     sku: Indexed(str)
     label: str
@@ -121,7 +113,6 @@ class CommerceVariant(TimestampDocument):
 
 
 class CommerceWarehouse(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     slug: Indexed(str)
     code: Indexed(str)
@@ -135,7 +126,6 @@ class CommerceWarehouse(TimestampDocument):
 
 
 class CommerceWarehouseStock(TimestampDocument):
-    tenant_id: Indexed(str)
     warehouse_id: Indexed(str)
     variant_id: Indexed(str)
     on_hand_quantity: int = 0
@@ -147,7 +137,6 @@ class CommerceWarehouseStock(TimestampDocument):
 
 
 class CommerceProductAttributeValue(TimestampDocument):
-    tenant_id: Indexed(str)
     product_id: Indexed(str)
     attribute_id: Indexed(str)
     value: Any
@@ -157,7 +146,6 @@ class CommerceProductAttributeValue(TimestampDocument):
 
 
 class CommerceVariantAttributeValue(TimestampDocument):
-    tenant_id: Indexed(str)
     variant_id: Indexed(str)
     attribute_id: Indexed(str)
     value: Any
@@ -167,7 +155,6 @@ class CommerceVariantAttributeValue(TimestampDocument):
 
 
 class CommerceStockLedgerEntry(TimestampDocument):
-    tenant_id: Indexed(str)
     warehouse_id: Indexed(str)
     variant_id: Indexed(str)
     entry_type: str
@@ -183,7 +170,6 @@ class CommerceStockLedgerEntry(TimestampDocument):
 
 
 class CommerceTaxProfile(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     code: Indexed(str)
     description: Optional[str] = None
@@ -196,7 +182,6 @@ class CommerceTaxProfile(TimestampDocument):
 
 
 class CommercePriceList(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     slug: Indexed(str)
     currency: str = "INR"
@@ -209,7 +194,6 @@ class CommercePriceList(TimestampDocument):
 
 
 class CommercePriceListItem(TimestampDocument):
-    tenant_id: Indexed(str)
     price_list_id: Indexed(str)
     variant_id: Indexed(str)
     price_minor: int
@@ -219,7 +203,6 @@ class CommercePriceListItem(TimestampDocument):
 
 
 class CommerceCoupon(TimestampDocument):
-    tenant_id: Indexed(str)
     code: Indexed(str)
     description: Optional[str] = None
     discount_type: str
@@ -235,7 +218,6 @@ class CommerceCoupon(TimestampDocument):
 
 
 class CommerceOrder(TimestampDocument):
-    tenant_id: Indexed(str)
     customer_id: Indexed(str)
     price_list_id: Optional[str] = None
     tax_profile_id: Optional[str] = None
@@ -261,7 +243,6 @@ class CommerceOrder(TimestampDocument):
 
 class CommerceOrderLine(TimestampDocument):
     order_id: Indexed(str)
-    tenant_id: Indexed(str)
     product_id: Indexed(str)
     variant_id: Indexed(str)
     allocated_warehouse_id: Optional[str] = None
@@ -275,7 +256,6 @@ class CommerceOrderLine(TimestampDocument):
 
 
 class CommerceFulfillment(TimestampDocument):
-    tenant_id: Indexed(str)
     order_id: Indexed(str)
     warehouse_id: Optional[str] = None
     fulfillment_number: Indexed(str)
@@ -290,7 +270,6 @@ class CommerceFulfillment(TimestampDocument):
 
 
 class CommerceFulfillmentLine(TimestampDocument):
-    tenant_id: Indexed(str)
     fulfillment_id: Indexed(str)
     order_line_id: Indexed(str)
     variant_id: Indexed(str)
@@ -301,7 +280,6 @@ class CommerceFulfillmentLine(TimestampDocument):
 
 
 class CommerceShipment(TimestampDocument):
-    tenant_id: Indexed(str)
     fulfillment_id: Indexed(str)
     carrier: str
     service_level: Optional[str] = None
@@ -316,7 +294,6 @@ class CommerceShipment(TimestampDocument):
 
 
 class CommercePayment(TimestampDocument):
-    tenant_id: Indexed(str)
     order_id: Indexed(str)
     amount_minor: int
     currency: str = "INR"
@@ -333,7 +310,6 @@ class CommercePayment(TimestampDocument):
 
 
 class CommerceRefund(TimestampDocument):
-    tenant_id: Indexed(str)
     order_id: Indexed(str)
     payment_id: Indexed(str)
     amount_minor: int
@@ -349,7 +325,6 @@ class CommerceRefund(TimestampDocument):
 
 
 class CommerceInvoice(TimestampDocument):
-    tenant_id: Indexed(str)
     order_id: Indexed(str)
     customer_id: Indexed(str)
     invoice_number: Indexed(str)
@@ -367,7 +342,6 @@ class CommerceInvoice(TimestampDocument):
 
 
 class CommerceReturn(TimestampDocument):
-    tenant_id: Indexed(str)
     order_id: Indexed(str)
     return_number: Indexed(str)
     status: str = "requested"
@@ -386,7 +360,6 @@ class CommerceReturn(TimestampDocument):
 
 
 class CommerceReturnLine(TimestampDocument):
-    tenant_id: Indexed(str)
     return_id: Indexed(str)
     order_line_id: Indexed(str)
     variant_id: Indexed(str)
@@ -402,7 +375,6 @@ class CommerceReturnLine(TimestampDocument):
 
 
 class CommerceSettlement(TimestampDocument):
-    tenant_id: Indexed(str)
     settlement_number: Indexed(str)
     provider: str
     settlement_reference: Optional[str] = None
@@ -425,7 +397,6 @@ class CommerceSettlement(TimestampDocument):
 
 
 class CommerceSettlementEntry(TimestampDocument):
-    tenant_id: Indexed(str)
     settlement_id: Indexed(str)
     entry_type: str
     payment_id: Optional[str] = None

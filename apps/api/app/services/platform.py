@@ -89,26 +89,26 @@ VERTICAL_READINESS = {
 
 def serialize_agency(agency) -> dict[str, object]:
     return {
-        "id": agency.id,
+        "id": str(agency.id),
         "slug": agency.slug,
         "name": agency.name,
         "region": agency.region,
-        "owner_user_id": agency.owner_user_id,
+        "owner_user_id": str(agency.owner_user_id),
         "created_at": agency.created_at.isoformat(),
     }
 
 
 def serialize_tenant(tenant, *, settings: Settings | None = None, bootstrap: dict[str, object] | None = None) -> dict[str, object]:
     payload = {
-        "id": tenant.id,
-        "agency_id": tenant.agency_id,
+        "id": str(tenant.id),
+        "agency_id": str(tenant.agency_id),
         "slug": tenant.slug,
         "display_name": tenant.display_name,
         "infra_mode": tenant.infra_mode,
         "vertical_packs": tenant.vertical_packs,
         "business_type": tenant.business_type,
         "feature_flags": tenant.feature_flags,
-        "dedicated_profile_id": tenant.dedicated_profile_id,
+        "dedicated_profile_id": str(tenant.dedicated_profile_id) if tenant.dedicated_profile_id else None,
         "mongo_db_name": tenant.mongo_db_name,
         "created_at": tenant.created_at.isoformat(),
     }
@@ -120,7 +120,9 @@ def serialize_tenant(tenant, *, settings: Settings | None = None, bootstrap: dic
             resolved_bootstrap = publishing_service.summarize_tenant_runtime_documents(
                 get_runtime_document_store(settings),
                 tenant_slug=tenant.slug,
+                database_name=tenant.mongo_db_name,
             )
+
         payload["runtime_documents"] = {
             **describe_tenant_runtime_document_store(settings, tenant_slug=tenant.slug),
             "bootstrap": resolved_bootstrap,
@@ -130,12 +132,12 @@ def serialize_tenant(tenant, *, settings: Settings | None = None, bootstrap: dic
 
 def serialize_audit_event(event) -> dict[str, object]:
     return {
-        "id": event.id,
-        "tenant_id": event.tenant_id,
-        "actor_user_id": event.actor_user_id,
+        "id": str(event.id),
+        "tenant_id": str(event.tenant_id) if event.tenant_id else None,
+        "actor_user_id": str(event.actor_user_id),
         "action": event.action,
         "subject_type": event.subject_type,
-        "subject_id": event.subject_id,
+        "subject_id": str(event.subject_id),
         "metadata": event.metadata_json,
         "created_at": event.created_at.isoformat(),
     }
@@ -143,9 +145,9 @@ def serialize_audit_event(event) -> dict[str, object]:
 
 def serialize_outbox_event(event) -> dict[str, object]:
     return {
-        "id": event.id,
-        "tenant_id": event.tenant_id,
-        "aggregate_id": event.aggregate_id,
+        "id": str(event.id),
+        "tenant_id": str(event.tenant_id) if event.tenant_id else None,
+        "aggregate_id": str(event.aggregate_id),
         "event_name": event.event_name,
         "payload": event.payload_json,
         "status": event.status,
@@ -163,11 +165,11 @@ def _url_scheme(url: str) -> str:
 def get_onboarding_readiness(
     settings: Settings,
     *,
-    requested_vertical_packs: list[str] | None = None,
+    requested_vertical_pack: str | None = None,
     infra_mode: str | None = None,
     dedicated_profile_id: str | None = None,
 ) -> dict[str, object]:
-    requested_verticals = requested_vertical_packs or []
+    requested_vertical = requested_vertical_pack
     blockers: list[str] = []
     warnings: list[str] = []
     checks: list[dict[str, str]] = []
@@ -211,17 +213,13 @@ def get_onboarding_readiness(
     if infra_mode == "shared" and dedicated_profile_id:
         blockers.append("Shared tenant onboarding must not include a dedicated_profile_id.")
 
-    if requested_verticals:
-        unknown_verticals = sorted(set(requested_verticals) - KNOWN_VERTICALS)
-        if unknown_verticals:
-            blockers.append(f"Unknown vertical packs requested: {', '.join(unknown_verticals)}.")
+    if requested_vertical:
+        if requested_vertical not in KNOWN_VERTICALS:
+            blockers.append(f"Unknown vertical pack requested: {requested_vertical}.")
 
-        unsupported_verticals = sorted(set(requested_verticals) - ONBOARDING_VERTICALS)
-        if unsupported_verticals:
+        if requested_vertical not in ONBOARDING_VERTICALS:
             blockers.append(
-                "Requested vertical packs are not approved for onboarding yet: "
-                + ", ".join(unsupported_verticals)
-                + "."
+                f"Requested vertical pack is not approved for onboarding yet: {requested_vertical}."
             )
 
     if settings.env != "production":
@@ -234,14 +232,17 @@ def get_onboarding_readiness(
         "environment": settings.env,
         "supported_vertical_packs": sorted(ONBOARDING_VERTICALS),
         "planned_vertical_packs": sorted(KNOWN_VERTICALS - ONBOARDING_VERTICALS),
-        "requested_vertical_packs": requested_verticals,
+        "requested_vertical_pack": requested_vertical,
         "infra_mode": infra_mode,
         "blockers": blockers,
         "warnings": warnings,
         "checks": checks,
         "vertical_readiness": {
             vertical: VERTICAL_READINESS[vertical]
-            for vertical in requested_verticals or sorted(ONBOARDING_VERTICALS)
+            for vertical in [requested_vertical] if vertical and vertical in VERTICAL_READINESS
+        } or {
+            vertical: VERTICAL_READINESS[vertical]
+            for vertical in sorted(ONBOARDING_VERTICALS)
             if vertical in VERTICAL_READINESS
         },
     }
@@ -256,7 +257,7 @@ def assert_onboarding_ready(
 ) -> None:
     readiness = get_onboarding_readiness(
         settings,
-        requested_vertical_packs=[vertical_pack],
+        requested_vertical_pack=vertical_pack,
         infra_mode=infra_mode,
         dedicated_profile_id=dedicated_profile_id,
     )
@@ -289,7 +290,7 @@ def create_agency(
         actor_user_id=actor_user_id,
         action="platform.agency.created",
         subject_type="agency",
-        subject_id=agency.id,
+        subject_id=str(agency.id),
         metadata_json={"slug": agency.slug},
     )
     db.commit()
@@ -329,7 +330,6 @@ def create_tenant(
         dedicated_profile_id=dedicated_profile_id,
     )
 
-
     mongo_db_name = build_runtime_database_name(settings, tenant_slug=slug)
 
     tenant = platform_repository.create_tenant(
@@ -348,7 +348,7 @@ def create_tenant(
     runtime_provisioning = provision_runtime_document_store_for_tenant(
         settings,
         tenant_slug=tenant.slug,
-        vertical_packs=tenant.vertical_packs,
+        vertical_pack=tenant.vertical_packs,
     )
 
     from app.services import publishing as publishing_service
@@ -369,11 +369,11 @@ def create_tenant(
 
     platform_repository.create_audit_event(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="platform.tenant.created",
         subject_type="tenant",
-        subject_id=tenant.id,
+        subject_id=str(tenant.id),
         metadata_json={
             "slug": tenant.slug,
             "agency_slug": agency.slug,
@@ -383,8 +383,8 @@ def create_tenant(
     )
     platform_repository.enqueue_outbox_event(
         db,
-        tenant_id=tenant.id,
-        aggregate_id=tenant.id,
+        tenant_id=str(tenant.id),
+        aggregate_id=str(tenant.id),
         event_name="tenant.provisioned",
         payload_json={
             "tenant_slug": tenant.slug,
@@ -414,13 +414,13 @@ def list_all_tenants(db: Session, settings: Settings) -> list[dict[str, object]]
 def get_onboarding_readiness_report(
     settings: Settings,
     *,
-    requested_vertical_packs: list[str] | None = None,
+    requested_vertical_pack: str | None = None,
     infra_mode: str | None = None,
     dedicated_profile_id: str | None = None,
 ) -> dict[str, object]:
     return get_onboarding_readiness(
         settings,
-        requested_vertical_packs=requested_vertical_packs,
+        requested_vertical_pack=requested_vertical_pack,
         infra_mode=infra_mode,
         dedicated_profile_id=dedicated_profile_id,
     )
@@ -437,8 +437,8 @@ def get_registry_snapshot(db: Session, *, tenant_slug: str) -> dict[str, object]
     tenant = get_tenant_or_raise(db, tenant_slug=tenant_slug)
 
     modules = list(BASE_MODULES)
-    for vertical_pack in tenant.vertical_packs:
-        modules.extend(VERTICAL_MODULES.get(vertical_pack, []))
+    if tenant.vertical_packs and tenant.vertical_packs in VERTICAL_MODULES:
+        modules.extend(VERTICAL_MODULES[tenant.vertical_packs])
 
     features = list(BASE_FEATURES)
     features.extend(tenant.feature_flags)
@@ -447,8 +447,8 @@ def get_registry_snapshot(db: Session, *, tenant_slug: str) -> dict[str, object]
 
     return {
         "tenant_id": tenant.slug,
-        "tenant_record_id": tenant.id,
-        "agency_id": tenant.agency_id,
+        "tenant_record_id": str(tenant.id),
+        "agency_id": str(tenant.agency_id),
         "modules": sorted(set(modules)),
         "features": sorted(set(features)),
         "generated_at": tenant.created_at.isoformat(),

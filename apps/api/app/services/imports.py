@@ -11,8 +11,8 @@ from app.services.platform import serialize_audit_event, serialize_outbox_event
 
 def serialize_import_source(source) -> dict[str, object]:
     return {
-        "id": source.id,
-        "tenant_id": source.tenant_id,
+        "id": str(source.id),
+        "tenant_id": str(source.tenant_id),
         "name": source.name,
         "source_type": source.source_type,
         "connection_profile_key": source.connection_profile_key,
@@ -24,10 +24,10 @@ def serialize_import_source(source) -> dict[str, object]:
 
 def serialize_import_job(job) -> dict[str, object]:
     return {
-        "id": job.id,
-        "tenant_id": job.tenant_id,
-        "source_id": job.source_id,
-        "requested_by_user_id": job.requested_by_user_id,
+        "id": str(job.id),
+        "tenant_id": str(job.tenant_id),
+        "source_id": str(job.source_id),
+        "requested_by_user_id": str(job.requested_by_user_id),
         "mode": job.mode,
         "status": job.status,
         "report": job.report_json,
@@ -62,11 +62,11 @@ async def create_import_source(
     )
     platform_repository.create_audit_event(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="imports.source.created",
         subject_type="import_source",
-        subject_id=source.id,
+        subject_id=str(source.id),
         metadata_json={"source_type": source.source_type, "vertical_pack": source.vertical_pack},
     )
     # db.commit() # Usually handled by router or middleware in async cleanup, 
@@ -115,21 +115,21 @@ async def create_import_job(
     )
     audit_event = platform_repository.create_audit_event(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="imports.job.created",
         subject_type="import_job",
-        subject_id=job.id,
-        metadata_json={"source_id": source.id, "mode": mode},
+        subject_id=str(job.id),
+        metadata_json={"source_id": str(source.id), "mode": mode},
     )
     outbox_event = platform_repository.enqueue_outbox_event(
         db,
-        tenant_id=tenant.id,
-        aggregate_id=job.id,
+        tenant_id=str(tenant.id),
+        aggregate_id=str(job.id),
         event_name="import.job.queued",
         payload_json={
             "tenant_slug": tenant.slug,
-            "source_id": source.id,
+            "source_id": str(source.id),
             "mode": mode,
             "source_type": source.source_type,
         },
@@ -141,10 +141,10 @@ async def create_import_job(
         try:
             result_status, result_report = await run_commerce_import_job(
                 db,
-                tenant_id=tenant.id,
+                tenant_id=str(tenant.id),
                 source=source,
                 actor_user_id=actor_user_id,
-                job_id=job.id,
+                job_id=str(job.id),
                 mode=mode,
             )
         except Exception as exc:
@@ -173,13 +173,13 @@ async def create_import_job(
         job.finished_at = datetime.now(tz=UTC).isoformat()
         result_audit_event = platform_repository.create_audit_event(
             db,
-            tenant_id=tenant.id,
+            tenant_id=str(tenant.id),
             actor_user_id=actor_user_id,
             action=f"imports.job.{result_status}",
             subject_type="import_job",
-            subject_id=job.id,
+            subject_id=str(job.id),
             metadata_json={
-                "source_id": source.id,
+                "source_id": str(source.id),
                 "mode": mode,
                 "vertical_pack": source.vertical_pack,
                 "error_count": result_report["totals"]["errors"],
@@ -188,13 +188,13 @@ async def create_import_job(
         )
         result_outbox_event = platform_repository.enqueue_outbox_event(
             db,
-            tenant_id=tenant.id,
-            aggregate_id=job.id,
+            tenant_id=str(tenant.id),
+            aggregate_id=str(job.id),
             event_name=f"import.job.{result_status}",
             payload_json={
                 "tenant_slug": tenant.slug,
-                "source_id": source.id,
-                "job_id": job.id,
+                "source_id": str(source.id),
+                "job_id": str(job.id),
                 "mode": mode,
                 "vertical_pack": source.vertical_pack,
                 "summary": result_report["summary"],

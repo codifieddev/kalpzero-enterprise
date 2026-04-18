@@ -103,7 +103,7 @@ async def commerce_overview(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return await get_overview(db, tenant_slug=session.tenant_id)
+        return await get_overview(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -114,7 +114,7 @@ async def commerce_categories(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "categories": await list_categories(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "categories": await list_categories(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -145,7 +145,7 @@ async def commerce_brands(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "brands": await list_brands(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "brands": await list_brands(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -159,7 +159,7 @@ async def commerce_brands_create(
     try:
         return await create_brand(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             slug=payload.slug,
@@ -177,7 +177,7 @@ async def commerce_vendors(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "vendors": await list_vendors(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "vendors": await list_vendors(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -191,7 +191,7 @@ async def commerce_vendors_create(
     try:
         return await create_vendor(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             slug=payload.slug,
@@ -212,7 +212,7 @@ async def commerce_collections(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "collections": await list_collections(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "collections": await list_collections(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -226,7 +226,7 @@ async def commerce_collections_create(
     try:
         return await create_collection(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             slug=payload.slug,
@@ -244,7 +244,7 @@ async def commerce_warehouses(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "warehouses": await list_warehouses(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "warehouses": await list_warehouses(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -258,7 +258,7 @@ async def commerce_warehouses_create(
     try:
         return await create_warehouse(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             slug=payload.slug,
@@ -284,7 +284,7 @@ async def commerce_stock_levels(
             "tenant_id": session.tenant_id,
             "stock_levels": await list_stock_levels(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 warehouse_id=warehouse_id,
                 variant_id=variant_id,
             ),
@@ -305,7 +305,7 @@ async def commerce_stock_ledger(
             "tenant_id": session.tenant_id,
             "entries": await list_stock_ledger(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 warehouse_id=warehouse_id,
                 variant_id=variant_id,
             ),
@@ -324,7 +324,7 @@ async def commerce_stock_adjustments_create(
     try:
         return await adjust_stock(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             warehouse_id=warehouse_id,
             variant_id=payload.variant_id,
@@ -342,7 +342,7 @@ async def commerce_tax_profiles(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "tax_profiles": await list_tax_profiles(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "tax_profiles": await list_tax_profiles(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -356,7 +356,7 @@ async def commerce_tax_profiles_create(
     try:
         return await create_tax_profile(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             code=payload.code,
@@ -375,7 +375,7 @@ async def commerce_price_lists(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "price_lists": await list_price_lists(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "price_lists": await list_price_lists(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -389,7 +389,7 @@ async def commerce_price_lists_create(
     try:
         return await create_price_list(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             slug=payload.slug,
@@ -409,7 +409,7 @@ async def commerce_coupons(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "coupons": await list_coupons(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "coupons": await list_coupons(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -423,7 +423,7 @@ async def commerce_coupons_create(
     try:
         return await create_coupon(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             code=payload.code,
             description=payload.description,
@@ -445,7 +445,7 @@ async def commerce_attributes(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "attributes": await list_attributes(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "attributes": await list_attributes(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -459,7 +459,7 @@ async def commerce_attributes_create(
     try:
         return await create_attribute(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             code=payload.code,
             slug=payload.slug,
@@ -487,7 +487,7 @@ async def commerce_attribute_sets(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "attribute_sets": await list_attribute_sets(db, tenant_slug=session.tenant_id),
+            "attribute_sets": await list_attribute_sets(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name),
         }
     except Exception as exc:
         _raise_http_error(exc)
@@ -502,7 +502,7 @@ async def commerce_attribute_sets_create(
     try:
         return await create_attribute_set(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             slug=payload.slug,
@@ -521,7 +521,7 @@ async def commerce_products(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "products": await list_products(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "products": await list_products(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -535,7 +535,7 @@ async def commerce_products_create(
     try:
         return await create_product(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             name=payload.name,
             slug=payload.slug,
@@ -561,7 +561,7 @@ async def commerce_orders(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "orders": await list_orders(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "orders": await list_orders(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -575,7 +575,7 @@ async def commerce_fulfillments(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "fulfillments": await list_fulfillments(db, tenant_slug=session.tenant_id, order_id=order_id),
+            "fulfillments": await list_fulfillments(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, order_id=order_id),
         }
     except Exception as exc:
         _raise_http_error(exc)
@@ -590,7 +590,7 @@ async def commerce_shipments(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "shipments": await list_shipments(db, tenant_slug=session.tenant_id, fulfillment_id=fulfillment_id),
+            "shipments": await list_shipments(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, fulfillment_id=fulfillment_id),
         }
     except Exception as exc:
         _raise_http_error(exc)
@@ -603,7 +603,7 @@ async def commerce_payments(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "payments": await list_payments(db, tenant_slug=session.tenant_id, order_id=order_id)}
+        return {"tenant_id": session.tenant_id, "payments": await list_payments(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, order_id=order_id)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -615,7 +615,7 @@ async def commerce_refunds(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "refunds": await list_refunds(db, tenant_slug=session.tenant_id, order_id=order_id)}
+        return {"tenant_id": session.tenant_id, "refunds": await list_refunds(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, order_id=order_id)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -627,7 +627,7 @@ async def commerce_returns(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "returns": await list_returns(db, tenant_slug=session.tenant_id, order_id=order_id)}
+        return {"tenant_id": session.tenant_id, "returns": await list_returns(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, order_id=order_id)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -639,7 +639,7 @@ async def commerce_return_detail(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return await get_return_detail(db, tenant_slug=session.tenant_id, return_id=return_id)
+        return await get_return_detail(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, return_id=return_id)
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -651,7 +651,7 @@ async def commerce_invoices(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "invoices": await list_invoices(db, tenant_slug=session.tenant_id, order_id=order_id)}
+        return {"tenant_id": session.tenant_id, "invoices": await list_invoices(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, order_id=order_id)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -662,7 +662,7 @@ async def commerce_settlements(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "settlements": await list_settlements(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "settlements": await list_settlements(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -674,7 +674,7 @@ async def commerce_settlement_detail(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return await get_settlement_detail(db, tenant_slug=session.tenant_id, settlement_id=settlement_id)
+        return await get_settlement_detail(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, settlement_id=settlement_id)
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -688,7 +688,7 @@ async def commerce_orders_create(
     try:
         return await create_order(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             customer_id=payload.customer_id,
             price_list_id=payload.price_list_id,
@@ -711,7 +711,7 @@ async def commerce_settlements_create(
     try:
         return await create_settlement(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             provider=payload.provider,
             settlement_reference=payload.settlement_reference,
@@ -737,7 +737,7 @@ async def commerce_order_return_create(
     try:
         return await create_return(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             order_id=order_id,
             reason_summary=payload.reason_summary,
@@ -755,7 +755,7 @@ async def commerce_order_finance_detail(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return await get_order_finance_detail(db, tenant_slug=session.tenant_id, order_id=order_id)
+        return await get_order_finance_detail(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name, order_id=order_id)
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -770,7 +770,7 @@ async def commerce_order_payment_create(
     try:
         return await record_payment(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             order_id=order_id,
             amount_minor=payload.amount_minor,
@@ -794,7 +794,7 @@ async def commerce_order_refund_create(
     try:
         return await record_refund(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             order_id=order_id,
             payment_id=payload.payment_id,
@@ -815,7 +815,7 @@ async def commerce_order_issue_invoice(
     try:
         return await issue_order_invoice(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             order_id=order_id,
         )
@@ -833,7 +833,7 @@ async def commerce_return_update_status(
     try:
         return await update_return_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             return_id=return_id,
             status=payload.status,
@@ -852,7 +852,7 @@ async def commerce_settlement_update_status(
     try:
         return await update_settlement_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             settlement_id=settlement_id,
             status=payload.status,
@@ -871,7 +871,7 @@ async def commerce_order_fulfillment_create(
     try:
         return await create_fulfillment(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             order_id=order_id,
             warehouse_id=payload.warehouse_id,
@@ -891,7 +891,7 @@ async def commerce_fulfillment_update_status(
     try:
         return await update_fulfillment_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             fulfillment_id=fulfillment_id,
             status=payload.status,
@@ -910,7 +910,7 @@ async def commerce_shipment_create(
     try:
         return await create_shipment(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             fulfillment_id=fulfillment_id,
             carrier=payload.carrier,
@@ -932,7 +932,7 @@ async def commerce_shipment_update_status(
     try:
         return await update_shipment_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             shipment_id=shipment_id,
             status=payload.status,
@@ -951,7 +951,7 @@ async def commerce_orders_update_status(
     try:
         return await update_order_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             order_id=order_id,
             status=payload.status,

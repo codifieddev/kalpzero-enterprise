@@ -29,9 +29,6 @@ RUNTIME_COLLECTIONS = {
     "ai_knowledge": "ai_knowledge_documents",
     "import_staging": "import_staging_documents",
     "discovery_snapshots": "discovery_snapshots",
-    "hotel_property_profiles": "hotel_property_profiles",
-    "hotel_amenity_catalogs": "hotel_amenity_catalogs",
-    "hotel_nearby_places": "hotel_nearby_places",
 }
 
 VERTICAL_COLLECTIONS: dict[str, list[str]] = {
@@ -87,6 +84,9 @@ VERTICAL_COLLECTIONS: dict[str, list[str]] = {
         "hotel_night_audits",
         "hotel_housekeeping_tasks",
         "hotel_maintenance_tickets",
+        "hotel_property_profiles",
+        "hotel_amenity_catalogs",
+        "hotel_nearby_places",
     ],
     "travel": [
         "travel_packages",
@@ -247,11 +247,11 @@ class MongoRuntimeDocumentStore:
         # Allow passing the direct collection name for vertical-specific collections
         return collection
 
-    def _database(self, tenant_slug: str, database_name: str | None = None) -> Database:
-        return get_runtime_mongo_database(self.settings, tenant_slug=tenant_slug, database_name=database_name)
+    def _database(self, database_name: str | None = None) -> Database:
+        return get_runtime_mongo_database(self.settings, database_name=database_name)
 
     def get_document(self, *, collection: str, tenant_slug: str, document_key: str, database_name: str | None = None) -> dict[str, object] | None:
-        document = self._database(tenant_slug, database_name=database_name)[self._collection_name(collection)].find_one(
+        document = self._database(database_name=database_name)[self._collection_name(collection)].find_one(
             {"tenant_slug": tenant_slug, "document_key": document_key}
         )
         return document
@@ -266,7 +266,7 @@ class MongoRuntimeDocumentStore:
         database_name: str | None = None,
     ) -> dict[str, object]:
         updated_at = datetime.now(tz=UTC).isoformat()
-        self._database(tenant_slug, database_name=database_name)[self._collection_name(collection)].update_one(
+        self._database(database_name=database_name)[self._collection_name(collection)].update_one(
             {"tenant_slug": tenant_slug, "document_key": document_key},
             {
                 "$set": {
@@ -284,7 +284,7 @@ class MongoRuntimeDocumentStore:
         return document
 
     def list_documents(self, *, collection: str, tenant_slug: str, database_name: str | None = None) -> list[dict[str, object]]:
-        cursor = self._database(tenant_slug, database_name=database_name)[self._collection_name(collection)].find({"tenant_slug": tenant_slug})
+        cursor = self._database(database_name=database_name)[self._collection_name(collection)].find({"tenant_slug": tenant_slug})
         return list(cursor)
 
 
@@ -305,13 +305,11 @@ def provision_runtime_document_store_for_tenant(
     settings: Settings,
     *,
     tenant_slug: str,
-    vertical_packs: list[str] | None = None,
+    vertical_pack: str | None = None,
 ) -> dict[str, object]:
-    packs = vertical_packs or []
     target_collections = list(RUNTIME_COLLECTIONS.values())
-    for pack in packs:
-        if pack in VERTICAL_COLLECTIONS:
-            target_collections.extend(VERTICAL_COLLECTIONS[pack])
+    if vertical_pack and vertical_pack in VERTICAL_COLLECTIONS:
+        target_collections.extend(VERTICAL_COLLECTIONS[vertical_pack])
 
     database_name = build_runtime_database_name(settings, tenant_slug=tenant_slug)
     if settings.runtime_doc_store_mode == "memory":
@@ -323,7 +321,7 @@ def provision_runtime_document_store_for_tenant(
             "index_strategy": "in_memory",
         }
 
-    database = get_runtime_mongo_database(settings, tenant_slug=tenant_slug)
+    database = get_runtime_mongo_database(settings, database_name=database_name)
     existing_collections = set(database.list_collection_names())
     created_collections: list[str] = []
 

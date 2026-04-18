@@ -5,7 +5,6 @@ from app.models.base import TimestampDocument
 
 
 class TravelPackage(TimestampDocument):
-    tenant_id: Indexed(str)
     code: Indexed(str)
     slug: Indexed(str)
     title: str
@@ -23,7 +22,6 @@ class TravelPackage(TimestampDocument):
 
 
 class TravelItineraryDay(TimestampDocument):
-    tenant_id: Indexed(str)
     package_id: Indexed(str)
     day_number: int
     title: str
@@ -37,7 +35,6 @@ class TravelItineraryDay(TimestampDocument):
 
 
 class TravelDeparture(TimestampDocument):
-    tenant_id: Indexed(str)
     package_id: Indexed(str)
     departure_date: date
     return_date: date
@@ -51,7 +48,6 @@ class TravelDeparture(TimestampDocument):
 
 
 class TravelLead(TimestampDocument):
-    tenant_id: Indexed(str)
     source: str
     interested_package_id: Optional[str] = None
     departure_id: Optional[str] = None

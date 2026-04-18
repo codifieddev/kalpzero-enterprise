@@ -5,7 +5,6 @@ from app.models.base import TimestampDocument
 
 
 class HotelProperty(TimestampDocument):
-    tenant_id: Indexed(str)
     name: str
     code: Indexed(str)
     city: str
@@ -17,7 +16,6 @@ class HotelProperty(TimestampDocument):
 
 
 class HotelRoomType(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     name: str
     code: str
@@ -36,7 +34,6 @@ class HotelRoomType(TimestampDocument):
 
 
 class HotelRoom(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     room_type_id: Indexed(str)
     room_number: str
@@ -55,7 +52,6 @@ class HotelRoom(TimestampDocument):
 
 
 class HotelMealPlan(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     code: str
     name: str
@@ -70,7 +66,6 @@ class HotelMealPlan(TimestampDocument):
 
 
 class HotelGuestProfile(TimestampDocument):
-    tenant_id: Indexed(str)
     first_name: str
     last_name: str
     email: Indexed(str)
@@ -89,7 +84,6 @@ class HotelGuestProfile(TimestampDocument):
 
 
 class HotelRatePlan(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     room_type_id: Indexed(str)
     label: str
@@ -104,7 +98,6 @@ class HotelRatePlan(TimestampDocument):
 
 
 class HotelAvailabilityRule(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     room_type_id: Indexed(str)
     total_units: int
@@ -119,7 +112,6 @@ class HotelAvailabilityRule(TimestampDocument):
 
 
 class HotelReservation(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     room_type_id: Indexed(str)
     room_id: Optional[str] = None
@@ -146,7 +138,6 @@ class HotelReservation(TimestampDocument):
 
 
 class HotelStay(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     reservation_id: Indexed(str)
     room_type_id: Indexed(str)
@@ -163,7 +154,6 @@ class HotelStay(TimestampDocument):
 
 
 class HotelRoomMove(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     stay_id: Indexed(str)
     reservation_id: Indexed(str)
@@ -178,7 +168,6 @@ class HotelRoomMove(TimestampDocument):
 
 
 class HotelGuestDocument(TimestampDocument):
-    tenant_id: Indexed(str)
     guest_profile_id: Indexed(str)
     document_kind: str
     document_number: str
@@ -193,7 +182,6 @@ class HotelGuestDocument(TimestampDocument):
 
 
 class HotelFolio(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     reservation_id: Indexed(str)
     guest_customer_id: Indexed(str)
@@ -214,7 +202,6 @@ class HotelFolio(TimestampDocument):
 
 
 class HotelFolioCharge(TimestampDocument):
-    tenant_id: Indexed(str)
     folio_id: Indexed(str)
     reservation_id: Indexed(str)
     category: str
@@ -232,7 +219,6 @@ class HotelFolioCharge(TimestampDocument):
 
 
 class HotelPayment(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     folio_id: Indexed(str)
     reservation_id: Indexed(str)
@@ -250,7 +236,6 @@ class HotelPayment(TimestampDocument):
 
 
 class HotelRefund(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     folio_id: Indexed(str)
     payment_id: Indexed(str)
@@ -268,7 +253,6 @@ class HotelRefund(TimestampDocument):
 
 
 class HotelStaffMember(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     staff_code: Indexed(str)
     first_name: str
@@ -285,7 +269,6 @@ class HotelStaffMember(TimestampDocument):
 
 
 class HotelShift(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     staff_member_id: Indexed(str)
     shift_date: date
@@ -300,7 +283,6 @@ class HotelShift(TimestampDocument):
 
 
 class HotelNightAudit(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     audit_date: Indexed(date)
     status: str = "completed"
@@ -313,7 +295,6 @@ class HotelNightAudit(TimestampDocument):
 
 
 class HotelHousekeepingTask(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     room_id: Indexed(str)
     status: str = "pending"
@@ -327,7 +308,6 @@ class HotelHousekeepingTask(TimestampDocument):
 
 
 class HotelMaintenanceTicket(TimestampDocument):
-    tenant_id: Indexed(str)
     property_id: Indexed(str)
     room_id: Optional[str] = None
     title: str

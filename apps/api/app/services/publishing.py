@@ -111,7 +111,7 @@ def _theme_for_vertical(vertical_pack: str, *, admin: bool) -> dict[str, object]
     return preset["admin" if admin else "public"]
 
 
-def _default_vocabulary(vertical_packs: list[str]) -> dict[str, str]:
+def _default_vocabulary(vertical_pack: str) -> dict[str, str]:
     vocabulary = {
         "customer": "Customer",
         "order": "Order",
@@ -119,31 +119,31 @@ def _default_vocabulary(vertical_packs: list[str]) -> dict[str, str]:
         "staff": "Staff",
         "location": "Location",
     }
-    if "hotel" in vertical_packs:
+    if vertical_pack == "hotel":
         vocabulary.update({"customer": "Guest", "booking": "Reservation", "location": "Property"})
-    if "travel" in vertical_packs:
+    if vertical_pack == "travel":
         vocabulary.update({"booking": "Itinerary", "order": "Trip"})
-    if "commerce" in vertical_packs:
+    if vertical_pack == "commerce":
         vocabulary.update({"order": "Order", "location": "Storefront"})
     return vocabulary
 
 
-def _default_routes(vertical_packs: list[str]) -> list[dict[str, object]]:
+def _default_routes(vertical_pack: str) -> list[dict[str, object]]:
     routes = [
         {"key": "home", "path": "/", "page_slug": "home", "visibility": "public"},
         {"key": "about", "path": "/about", "page_slug": "about", "visibility": "public"},
         {"key": "contact", "path": "/contact", "page_slug": "contact", "visibility": "public"},
     ]
-    if "commerce" in vertical_packs:
+    if vertical_pack == "commerce":
         routes.append({"key": "catalog", "path": "/catalog", "page_slug": "catalog", "visibility": "public"})
-    if "travel" in vertical_packs:
+    if vertical_pack == "travel":
         routes.append({"key": "packages", "path": "/packages", "page_slug": "packages", "visibility": "public"})
-    if "hotel" in vertical_packs:
+    if vertical_pack == "hotel":
         routes.append({"key": "stay", "path": "/stay", "page_slug": "stay", "visibility": "public"})
     return routes
 
 
-def _default_dashboard_widgets(vertical_packs: list[str]) -> list[dict[str, object]]:
+def _default_dashboard_widgets(vertical_pack: str) -> list[dict[str, object]]:
     widgets = [
         {
             "key": "traffic",
@@ -158,7 +158,7 @@ def _default_dashboard_widgets(vertical_packs: list[str]) -> list[dict[str, obje
             "description": "Monitor inquiry and funnel health across forms.",
         },
     ]
-    if "commerce" in vertical_packs:
+    if vertical_pack == "commerce":
         widgets.append(
             {
                 "key": "orders",
@@ -167,7 +167,7 @@ def _default_dashboard_widgets(vertical_packs: list[str]) -> list[dict[str, obje
                 "description": "Observe order throughput and stock impact.",
             }
         )
-    if "travel" in vertical_packs:
+    if vertical_pack == "travel":
         widgets.append(
             {
                 "key": "departures",
@@ -176,7 +176,7 @@ def _default_dashboard_widgets(vertical_packs: list[str]) -> list[dict[str, obje
                 "description": "Track departures, quotes, and conversion flow.",
             }
         )
-    if "hotel" in vertical_packs:
+    if vertical_pack == "hotel":
         widgets.append(
             {
                 "key": "occupancy",
@@ -189,7 +189,7 @@ def _default_dashboard_widgets(vertical_packs: list[str]) -> list[dict[str, obje
 
 
 def _default_blueprint(tenant, extra_metadata: dict[str, Any] | None = None) -> dict[str, object]:
-    primary_vertical = tenant.vertical_packs[0] if tenant.vertical_packs else "commerce"
+    primary_vertical = tenant.vertical_packs or "commerce"
     public_theme = {"brand_name": tenant.display_name, **_theme_for_vertical(primary_vertical, admin=False)}
     admin_theme = {
         "brand_name": f"{tenant.display_name} Admin",
@@ -201,11 +201,11 @@ def _default_blueprint(tenant, extra_metadata: dict[str, Any] | None = None) -> 
         {"label": "About", "href": "/about", "kind": "link", "icon": "spark"},
         {"label": "Contact", "href": "/contact", "kind": "cta", "icon": "mail"},
     ]
-    if "commerce" in tenant.vertical_packs:
+    if tenant.vertical_packs == "commerce":
         public_navigation.insert(1, {"label": "Catalog", "href": "/catalog", "kind": "link", "icon": "bag"})
-    if "travel" in tenant.vertical_packs:
+    if tenant.vertical_packs == "travel":
         public_navigation.insert(1, {"label": "Packages", "href": "/packages", "kind": "link", "icon": "compass"})
-    if "hotel" in tenant.vertical_packs:
+    if tenant.vertical_packs == "hotel":
         public_navigation.insert(1, {"label": "Stay", "href": "/stay", "kind": "link", "icon": "key"})
 
     admin_navigation = [
@@ -213,11 +213,11 @@ def _default_blueprint(tenant, extra_metadata: dict[str, Any] | None = None) -> 
         {"label": "Publishing", "href": "/admin/publishing", "kind": "module", "icon": "paintbrush"},
         {"label": "Customers", "href": "/admin/customers", "kind": "module", "icon": "users"},
     ]
-    for vertical in tenant.vertical_packs:
+    if tenant.vertical_packs:
         admin_navigation.append(
             {
-                "label": vertical.replace("_", " ").title(),
-                "href": f"/admin/{vertical.replace('_', '-')}",
+                "label": tenant.vertical_packs.replace("_", " ").title(),
+                "href": f"/admin/{tenant.vertical_packs.replace('_', '-')}",
                 "kind": "module",
                 "icon": "stack",
             }
@@ -227,11 +227,12 @@ def _default_blueprint(tenant, extra_metadata: dict[str, Any] | None = None) -> 
         "publishing.pages",
         "publishing.discovery",
         "publishing.blueprints",
-        *tenant.vertical_packs,
     ]
+    if tenant.vertical_packs:
+        enabled_modules.append(tenant.vertical_packs)
 
     return {
-        "tenant_id": tenant.id,
+        "tenant_id": str(tenant.id),
         "tenant_slug": tenant.slug,
         "version": 1,
         "business_label": tenant.display_name,
@@ -317,7 +318,7 @@ def _default_page(tenant, blueprint: dict[str, object], page_slug: str) -> dict[
                 "kind": "stat_strip",
                 "headline": "Blueprint Signals",
                 "items": [
-                    {"title": "Vertical Packs", "value": str(len(tenant.vertical_packs))},
+                    {"title": "Vertical Pack", "value": tenant.vertical_packs or "None"},
                     {"title": "Routes", "value": str(len(blueprint["routes"]))},
                     {"title": "Widgets", "value": str(len(blueprint["dashboard_widgets"]))},
                 ],
@@ -343,14 +344,14 @@ def _default_discovery(tenant, blueprint: dict[str, object]) -> dict[str, object
                     "title": route["key"].replace("_", " ").title(),
                     "summary": f"Public route {route['path']} derived from the tenant blueprint.",
                     "href": route["path"],
-                    "tags": tenant.vertical_packs,
+                    "tags": [tenant.vertical_packs] if tenant.vertical_packs else [],
                 }
             )
     return {
         "tenant_slug": tenant.slug,
         "headline": f"{tenant.display_name} is discoverable through a canonical public runtime.",
         "summary": "Discovery cards are materialized from runtime docs so Kalp controls SEO and public routing centrally.",
-        "tags": tenant.vertical_packs,
+        "tags": [tenant.vertical_packs] if tenant.vertical_packs else [],
         "cards": cards,
     }
 
@@ -453,13 +454,13 @@ def bootstrap_tenant_runtime_documents(
 
 def summarize_tenant_runtime_documents(store: RuntimeDocumentStore, *, tenant_slug: str, database_name: str | None = None) -> dict[str, object]:
     seeded_documents: list[dict[str, str]] = []
-
     blueprint_document = store.get_document(
         collection=BLUEPRINT_COLLECTION,
         tenant_slug=tenant_slug,
         document_key="blueprint",
         database_name=database_name
     )
+    
     if blueprint_document is not None:
         seeded_documents.append({"collection": BLUEPRINT_COLLECTION, "document_key": "blueprint"})
 
@@ -523,7 +524,7 @@ def _travel_package_items(db: Session, *, tenant_id: str) -> list[dict[str, obje
                 "title": package.title,
                 "description": (
                     f"{package.destination_city}, {package.destination_country} · "
-                    f"{package.duration_days} days · {departures_by_package.get(package.id, 0)} scheduled departures"
+                    f"{package.duration_days} days · {departures_by_package.get(str(package.id), 0)} scheduled departures"
                 ),
                 "value": f"{package.currency} {package.base_price_minor:,}",
             }
@@ -905,7 +906,7 @@ def update_blueprint(
     next_payload = {
         **blueprint,
         **payload,
-        "tenant_id": tenant.id,
+        "tenant_id": str(tenant.id),
         "tenant_slug": tenant.slug,
         "version": int(blueprint["version"]) + 1,
         "updated_at": datetime.now(tz=UTC).isoformat(),
@@ -919,7 +920,7 @@ def update_blueprint(
     )
     platform_repository.create_audit_event(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="publishing.blueprint.updated",
         subject_type="business_blueprint",
@@ -988,7 +989,7 @@ def upsert_page(
     )
     platform_repository.create_audit_event(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="publishing.page.upserted",
         subject_type="published_page",
@@ -998,7 +999,7 @@ def upsert_page(
     if page_payload["status"] == "live":
         platform_repository.enqueue_outbox_event(
             db,
-            tenant_id=tenant.id,
+            tenant_id=str(tenant.id),
             aggregate_id=page_slug,
             event_name="publishing.content.published",
             payload_json={"page_slug": page_slug, "route_path": page_payload["route_path"]},
@@ -1053,7 +1054,7 @@ def upsert_discovery(
     )
     platform_repository.create_audit_event(
         db,
-        tenant_id=tenant.id,
+        tenant_id=str(tenant.id),
         actor_user_id=actor_user_id,
         action="publishing.discovery.updated",
         subject_type="discovery_document",
@@ -1080,11 +1081,11 @@ def get_public_site_payload(
     resolved_discovery = discovery
 
     if "travel" in tenant.vertical_packs:
-        dynamic_blocks = _travel_dynamic_blocks(db, tenant_id=tenant.id, page_slug=page_slug)
+        dynamic_blocks = _travel_dynamic_blocks(db, tenant_id=str(tenant.id), page_slug=page_slug)
         if dynamic_blocks:
             resolved_page = {**page, "blocks": [*page["blocks"], *dynamic_blocks]}
 
-        dynamic_cards = _travel_discovery_cards(db, tenant_id=tenant.id)
+        dynamic_cards = _travel_discovery_cards(db, tenant_id=str(tenant.id))
         if dynamic_cards:
             resolved_discovery = {**discovery, "cards": [*discovery["cards"], *dynamic_cards]}
 
@@ -1099,7 +1100,7 @@ def get_public_site_payload(
         if commerce_page is not None:
             resolved_page = commerce_page
 
-        commerce_cards = _commerce_discovery_cards(db, tenant_id=tenant.id)
+        commerce_cards = _commerce_discovery_cards(db, tenant_id=str(tenant.id))
         if commerce_cards:
             resolved_discovery = {**resolved_discovery, "cards": [*resolved_discovery["cards"], *commerce_cards]}
 
@@ -1136,7 +1137,7 @@ def get_publishing_overview(
     discovery = get_discovery(db, store, tenant_slug=tenant_slug)
     return {
         "tenant_id": tenant.slug,
-        "tenant_record_id": tenant.id,
+        "tenant_record_id": str(tenant.id),
         "blueprint_version": blueprint["version"],
         "routes": len(blueprint["routes"]),
         "public_navigation_items": len(blueprint["public_navigation"]),
