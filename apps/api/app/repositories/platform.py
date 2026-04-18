@@ -50,14 +50,12 @@ def create_tenant(
     dedicated_profile_id: str | None,
     mongo_db_name: str | None,
 ) -> TenantModel:
-    # Keep the stored value list-shaped so existing publishing/bootstrap helpers
-    # can continue to read tenant.vertical_packs without a broader refactor.
     tenant = TenantModel(
         agency_id=agency_id,
         slug=slug,
         display_name=display_name,
         infra_mode=infra_mode,
-        vertical_packs=[vertical_pack],
+        vertical_packs=vertical_pack,
         business_type=business_type,
         feature_flags=feature_flags,
         dedicated_profile_id=dedicated_profile_id,

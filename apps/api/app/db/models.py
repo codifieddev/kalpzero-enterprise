@@ -37,7 +37,7 @@ class TenantModel(TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(120), unique=True, index=True)
     display_name: Mapped[str] = mapped_column(String(255))
     infra_mode: Mapped[str] = mapped_column(String(32))
-    vertical_packs: Mapped[list[str]] = mapped_column(JSON, default=list)
+    vertical_packs: Mapped[str] = mapped_column(String(120))
     business_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
     feature_flags: Mapped[list[str]] = mapped_column(JSON, default=list)
     dedicated_profile_id: Mapped[str | None] = mapped_column(String(120), nullable=True)

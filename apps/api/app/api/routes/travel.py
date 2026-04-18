@@ -36,38 +36,35 @@ def _raise_http_error(exc: Exception) -> None:
     raise exc
 
 
-@router.get("/overview")
-def travel_overview(
+async def travel_overview(
     session: SessionContext = Depends(require_permission("travel.packages.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return get_overview(db, tenant_slug=session.tenant_id)
+        return await get_overview(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.get("/packages")
-def travel_packages(
+async def travel_packages(
     session: SessionContext = Depends(require_permission("travel.packages.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "packages": list_packages(db, tenant_slug=session.tenant_id)}
+        return {"tenant_id": session.tenant_id, "packages": await list_packages(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
     except Exception as exc:
         _raise_http_error(exc)
 
 
-@router.post("/packages", status_code=status.HTTP_201_CREATED)
-def travel_packages_create(
+async def travel_packages_create(
     payload: CreateTravelPackageRequest,
     session: SessionContext = Depends(require_permission("travel.packages.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_package(
+        return await create_package(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             code=payload.code,
             slug=payload.slug,
@@ -86,8 +83,7 @@ def travel_packages_create(
         _raise_http_error(exc)
 
 
-@router.get("/departures")
-def travel_departures(
+async def travel_departures(
     package_id: str | None = None,
     departure_status: str | None = None,
     session: SessionContext = Depends(require_permission("travel.packages.read")),
@@ -96,9 +92,9 @@ def travel_departures(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "departures": list_departures(
+            "departures": await list_departures(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 package_id=package_id,
                 status=departure_status,
             ),
@@ -107,16 +103,15 @@ def travel_departures(
         _raise_http_error(exc)
 
 
-@router.post("/departures", status_code=status.HTTP_201_CREATED)
-def travel_departures_create(
+async def travel_departures_create(
     payload: CreateTravelDepartureRequest,
     session: SessionContext = Depends(require_permission("travel.packages.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_departure(
+        return await create_departure(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             package_id=payload.package_id,
             departure_date=payload.departure_date,
@@ -130,17 +125,16 @@ def travel_departures_create(
         _raise_http_error(exc)
 
 
-@router.patch("/departures/{departure_id}/status")
-def travel_departures_update_status(
+async def travel_departures_update_status(
     departure_id: str,
     payload: TravelDepartureStatusRequest,
     session: SessionContext = Depends(require_permission("travel.packages.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return update_departure_status(
+        return await update_departure_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             departure_id=departure_id,
             status=payload.status,
@@ -149,8 +143,7 @@ def travel_departures_update_status(
         _raise_http_error(exc)
 
 
-@router.get("/leads")
-def travel_leads(
+async def travel_leads(
     lead_status: str | None = None,
     interested_package_id: str | None = None,
     session: SessionContext = Depends(require_permission("travel.leads.read")),
@@ -159,9 +152,9 @@ def travel_leads(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "leads": list_leads(
+            "leads": await list_leads(
                 db,
-                tenant_slug=session.tenant_id,
+                tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
                 status=lead_status,
                 interested_package_id=interested_package_id,
             ),
@@ -170,16 +163,15 @@ def travel_leads(
         _raise_http_error(exc)
 
 
-@router.post("/leads", status_code=status.HTTP_201_CREATED)
-def travel_leads_create(
+async def travel_leads_create(
     payload: CreateTravelLeadRequest,
     session: SessionContext = Depends(require_permission("travel.leads.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return create_lead(
+        return await create_lead(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             source=payload.source,
             interested_package_id=payload.interested_package_id,
@@ -198,17 +190,16 @@ def travel_leads_create(
         _raise_http_error(exc)
 
 
-@router.patch("/leads/{lead_id}/status")
-def travel_leads_update_status(
+async def travel_leads_update_status(
     lead_id: str,
     payload: TravelLeadStatusRequest,
     session: SessionContext = Depends(require_permission("travel.leads.manage")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return update_lead_status(
+        return await update_lead_status(
             db,
-            tenant_slug=session.tenant_id,
+            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
             lead_id=lead_id,
             status=payload.status,
@@ -217,8 +208,7 @@ def travel_leads_update_status(
         _raise_http_error(exc)
 
 
-@router.get("/legacy/plan")
-def travel_legacy_plan(
+async def travel_legacy_plan(
     _: SessionContext = Depends(require_permission("imports.sources.read")),
 ):
     return load_legacy_travel_plan()
