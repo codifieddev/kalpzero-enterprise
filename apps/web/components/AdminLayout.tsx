@@ -1424,6 +1424,11 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
     );
   }
 
+
+  const handlelogout=()=>{
+     authCtx.logout()
+    router.push("/")
+  }
   return (
     <>
       {/* get all tenant */}
@@ -1751,7 +1756,8 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
                         <Settings size={13} />
                       </Link>
                       <button
-                        onClick={() => authCtx.logout()}
+                        onClick={handlelogout}
+                       // onClick={() => authCtx.logout()}
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:border-rose-500/40 hover:text-rose-300"
                         title={t("auth.logout", "Logout")}
                       >
@@ -1761,7 +1767,7 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
                   )}
                   {sidebarCollapsed && !isMobileMenuOpen && (
                     <button
-                      onClick={() => authCtx.logout()}
+                      onClick={handlelogout}
                       className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:border-rose-500/40 hover:text-rose-300"
                       title={t("auth.logout", "Logout")}
                     >

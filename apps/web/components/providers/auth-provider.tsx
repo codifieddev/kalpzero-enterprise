@@ -111,6 +111,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       dispatch(setAuthUser(userData));
       writeStoredAuthUser(userData); // ← Persist to storage
 
+        // Save the entire userData into session state as well
+        setSession(userData as unknown as SessionDto); // Type cast for compatibility
+
       return nextSession;
     } catch {
       writeStoredToken(null);
