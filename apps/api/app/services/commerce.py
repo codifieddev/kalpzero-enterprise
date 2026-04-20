@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -193,7 +193,7 @@ def _serialize_tax_profile(model) -> dict[str, object]:
         "code": model.get("code"),
         "description": model.get("description"),
         "prices_include_tax": model.get("prices_include_tax", False),
-        "rules": model.get("rules_json", {}),
+        "rules": model.get("rules", model.get("rules_json", [])),
         "status": model["status"],
         "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
     }
@@ -374,7 +374,7 @@ def _serialize_attribute(model) -> dict[str, object]:
         "description": model.get("description"),
         "value_type": model["value_type"],
         "scope": model["scope"],
-        "options": model.get("options_json", []),
+        "options": model.get("options", model.get("options_json", [])),
         "unit_label": model.get("unit_label"),
         "is_required": model.get("is_required", False),
         "is_filterable": model.get("is_filterable", False),
@@ -399,7 +399,10 @@ def _serialize_attribute_set(model) -> dict[str, object]:
 
 
 def _serialize_attribute_value(model) -> dict[str, object]:
-    return {"attribute_id": str(model["attribute_id"]), "value": model.get("value_json")}
+    return {
+        "attribute_id": str(model["attribute_id"]),
+        "value": model.get("value", model.get("value_json")),
+    }
 
 
 def _serialize_variant(model, attribute_values_by_variant: dict[str, list[dict[str, object]]]) -> dict[str, object]:
@@ -630,7 +633,7 @@ async def _outbox_settlement(db: Session, *, db_name: str, tenant_id: str, settl
         })
 
 
-async def _order_or_raise(db: Session, *, db_name: str, tenant_id: str, order_id: str):
+async def _order_or_raise(db_name: str, *, tenant_id: str, order_id: str):
 
     db_name = await _db_name(tenant_id, db_name)
     order = await commerce_repository.get_order(db_name, order_id=order_id)
@@ -639,7 +642,7 @@ async def _order_or_raise(db: Session, *, db_name: str, tenant_id: str, order_id
     return order
 
 
-async def _warehouse_or_raise(db: Session, *, db_name: str, tenant_id: str, warehouse_id: str):
+async def _warehouse_or_raise(db_name: str, *, tenant_id: str, warehouse_id: str):
 
     db_name = await _db_name(tenant_id, db_name)
     warehouse = await commerce_repository.get_warehouse(db_name, warehouse_id=warehouse_id)
@@ -648,7 +651,7 @@ async def _warehouse_or_raise(db: Session, *, db_name: str, tenant_id: str, ware
     return warehouse
 
 
-async def _fulfillment_or_raise(db: Session, *, db_name: str, tenant_id: str, fulfillment_id: str):
+async def _fulfillment_or_raise(db_name: str, *, tenant_id: str, fulfillment_id: str):
 
     db_name = await _db_name(tenant_id, db_name)
     fulfillment = await commerce_repository.get_fulfillment(db_name, fulfillment_id=fulfillment_id)
@@ -657,7 +660,7 @@ async def _fulfillment_or_raise(db: Session, *, db_name: str, tenant_id: str, fu
     return fulfillment
 
 
-async def _shipment_or_raise(db: Session, *, db_name: str, tenant_id: str, shipment_id: str):
+async def _shipment_or_raise(db_name: str, *, tenant_id: str, shipment_id: str):
 
     db_name = await _db_name(tenant_id, db_name)
     shipment = await commerce_repository.get_shipment(db_name, shipment_id=shipment_id)
@@ -666,7 +669,7 @@ async def _shipment_or_raise(db: Session, *, db_name: str, tenant_id: str, shipm
     return shipment
 
 
-async def _payment_or_raise(db: Session, *, db_name: str, tenant_id: str, payment_id: str):
+async def _payment_or_raise(db_name: str, *, tenant_id: str, payment_id: str):
 
     db_name = await _db_name(tenant_id, db_name)
     payment = await commerce_repository.get_payment(db_name, payment_id=payment_id)
@@ -675,7 +678,7 @@ async def _payment_or_raise(db: Session, *, db_name: str, tenant_id: str, paymen
     return payment
 
 
-async def _return_or_raise(db: Session, *, db_name: str, tenant_id: str, return_id: str):
+async def _return_or_raise(db_name: str, *, tenant_id: str, return_id: str):
 
     db_name = await _db_name(tenant_id, db_name)
     return_request = await commerce_repository.get_return(db_name, return_id=return_id)
@@ -684,7 +687,7 @@ async def _return_or_raise(db: Session, *, db_name: str, tenant_id: str, return_
     return return_request
 
 
-async def _settlement_or_raise(db: Session, *, db_name: str, tenant_id: str, settlement_id: str):
+async def _settlement_or_raise(db_name: str, *, tenant_id: str, settlement_id: str):
 
     db_name = await _db_name(tenant_id, db_name)
     settlement = await commerce_repository.get_settlement(db_name, settlement_id=settlement_id)
@@ -710,7 +713,7 @@ def _settlement_number(count: int) -> str:
     return f"SET-{count + 1:04d}"
 
 
-async def _sync_variant_inventory_from_stocks(db: Session, *, db_name: str, tenant_id: str, variant_ids: list[str]) -> None:
+async def _sync_variant_inventory_from_stocks(db_name: str, *, tenant_id: str, variant_ids: list[str]) -> None:
 
     db_name = await _db_name(tenant_id, db_name)
     deduped_variant_ids = _dedupe_strings(variant_ids)
@@ -728,7 +731,7 @@ async def _sync_variant_inventory_from_stocks(db: Session, *, db_name: str, tena
             await commerce_repository.update_variant(db_name, variant_id=variant_id, data={"inventory_quantity": new_qty})
 
 
-async def _allocate_warehouse_stocks(db: Session, *, db_name: str, tenant_id: str, variant_ids: list[str], quantities: dict[str, int]) -> dict[str, Any]:
+async def _allocate_warehouse_stocks(db_name: str, *, tenant_id: str, variant_ids: list[str], quantities: dict[str, int]) -> dict[str, Any]:
 
     db_name = await _db_name(tenant_id, db_name)
     warehouses = await commerce_repository.list_warehouses(db_name)
@@ -764,9 +767,9 @@ async def _allocate_warehouse_stocks(db: Session, *, db_name: str, tenant_id: st
     return allocations
 
 
-async def _recalculate_order_finance(db: Session, order, db_name: str) -> None:
+async def _recalculate_order_finance(db_name: str, *, tenant_id: str, order) -> None:
 
-    db_name = await _db_name(tenant_slug, db_name)
+    db_name = await _db_name(tenant_id, db_name)
     # Parallelize lookups
     payments_task = commerce_repository.list_payments(db_name, order_id=order["id"])
     refunds_task = commerce_repository.list_refunds(db_name, order_id=order["id"])
@@ -849,7 +852,7 @@ def _normalize_tax_rules(rules: list[dict[str, object]]) -> list[dict[str, objec
 
 
 def _total_tax_basis_points(tax_profile) -> int:
-    rules = tax_profile.get("rules_json") or []
+    rules = tax_profile.get("rules", tax_profile.get("rules_json", [])) or []
     return sum(int(rule.get("rate_basis_points", 0)) for rule in rules)
 
 
@@ -875,7 +878,10 @@ def _normalize_attribute_value(model, value: object | None, *, owner: str) -> ob
             raise ValidationError(f"{owner} attribute '{model['code']}' expects a boolean value.")
         return value
 
-    allowed_options = {str(option["value"]) for option in model.get("options_json", [])}
+    allowed_options = {
+        str(option["value"])
+        for option in model.get("options", model.get("options_json", []))
+    }
     if model["value_type"] == "single_select":
         if not isinstance(value, str):
             raise ValidationError(f"{owner} attribute '{model['code']}' expects a single option value.")
@@ -961,7 +967,7 @@ def _validate_variation_axes(*, attribute_lookup: dict[str, Any], normalized_var
         value_map = {item["attribute_id"]: item["value"] for item in values}
         missing_axis_ids = [attribute_id for attribute_id in variation_axis_ids if attribute_id not in value_map]
         if missing_axis_ids:
-            missing_codes = [attribute_lookup[attribute_id].code for attribute_id in missing_axis_ids]
+            missing_codes = [attribute_lookup[attribute_id]["code"] for attribute_id in missing_axis_ids]
             raise ValidationError(
                 f"Variant #{index} is missing variation-axis values: {', '.join(missing_codes)}."
             )
@@ -1269,8 +1275,7 @@ async def adjust_stock(db: Session, *, db_name: str, tenant_slug: str, actor_use
         notes=notes,
         recorded_by_user_id=actor_user_id)
     await _sync_variant_inventory_from_stocks(
-        db,
-        db_name=db_name,
+        db_name,
         tenant_id=tenant_slug,
         variant_ids=[variant["id"]],
     )
@@ -1999,7 +2004,7 @@ async def get_return_detail(db: Session, *, tenant_slug: str, db_name: str, retu
 async def get_order_finance_detail(db: Session, *, tenant_slug: str, db_name: str, order_id: str) -> dict[str, object]:
     db_name = await _db_name(tenant_slug, db_name)
     order = await _order_or_raise(db_name, tenant_id=tenant_slug, order_id=order_id)
-    await _recalculate_order_finance(db, order)
+    await _recalculate_order_finance(db_name, tenant_id=tenant_slug, order=order)
     
     # Parallelize lookups
     lines_task = commerce_repository.list_order_lines_for_orders(db_name, order_ids=[order["id"]])
@@ -2028,7 +2033,7 @@ async def get_order_finance_detail(db: Session, *, tenant_slug: str, db_name: st
         returns=[_serialize_return(item, serialized_returns_by_id) for item in return_requests])
 
 
-async def _reserve_inventory(db: Session, *, db_name: str, tenant_id: str, variants: list, quantities: dict[str, int]) -> None:
+async def _reserve_inventory(db_name: str, *, tenant_id: str, variants: list, quantities: dict[str, int]) -> None:
 
     db_name = await _db_name(tenant_id, db_name)
     for variant in variants:
@@ -2040,7 +2045,7 @@ async def _reserve_inventory(db: Session, *, db_name: str, tenant_id: str, varia
         await commerce_repository.update_variant(db_name, variant_id=variant["id"], data={"inventory_quantity": new_qty})
 
 
-async def _restore_inventory(db: Session, *, db_name: str, tenant_id: str, variants: list, quantities: dict[str, int]) -> None:
+async def _restore_inventory(db_name: str, *, tenant_id: str, variants: list, quantities: dict[str, int]) -> None:
 
     db_name = await _db_name(tenant_id, db_name)
     for variant in variants:
@@ -2048,12 +2053,17 @@ async def _restore_inventory(db: Session, *, db_name: str, tenant_id: str, varia
         await commerce_repository.update_variant(db_name, variant_id=variant["id"], data={"inventory_quantity": new_qty})
 
 
-async def _reserve_order_lines_against_warehouses(db: Session, *, db_name: str, tenant_id: str, order, order_lines: list, actor_user_id: str) -> None:
+async def _reserve_order_lines_against_warehouses(db_name: str, *, tenant_id: str, order, order_lines: list, actor_user_id: str) -> None:
 
     db_name = await _db_name(tenant_id, db_name)
     variant_ids = [line["variant_id"] for line in order_lines]
     quantities = {line["variant_id"]: line.get("quantity", 0) - line.get("fulfilled_quantity", 0) for line in order_lines}
-    allocations = await _allocate_warehouse_stocks(db, tenant_id=tenant_id, variant_ids=variant_ids, quantities=quantities)
+    allocations = await _allocate_warehouse_stocks(
+        db_name,
+        tenant_id=tenant_id,
+        variant_ids=variant_ids,
+        quantities=quantities,
+    )
     for line in order_lines:
         variant_id = line["variant_id"]
         stock = allocations[variant_id]
@@ -2073,10 +2083,14 @@ async def _reserve_order_lines_against_warehouses(db: Session, *, db_name: str, 
             reference_id=order["id"],
             notes=f"Reserved stock for order {order['id']}.",
             recorded_by_user_id=actor_user_id)
-    await _sync_variant_inventory_from_stocks(db, db_name=db_name, tenant_id=tenant_id, variant_ids=variant_ids)
+    await _sync_variant_inventory_from_stocks(
+        db_name,
+        tenant_id=tenant_id,
+        variant_ids=variant_ids,
+    )
 
 
-async def _release_order_lines_from_warehouses(db: Session, *, db_name: str, tenant_id: str, order, order_lines: list, actor_user_id: str) -> None:
+async def _release_order_lines_from_warehouses(db_name: str, *, tenant_id: str, order, order_lines: list, actor_user_id: str) -> None:
 
     db_name = await _db_name(tenant_id, db_name)
     touched_variant_ids: list[str] = []
@@ -2109,17 +2123,21 @@ async def _release_order_lines_from_warehouses(db: Session, *, db_name: str, ten
             notes=f"Released reserved stock for cancelled order {order['id']}.",
             recorded_by_user_id=actor_user_id)
         touched_variant_ids.append(line["variant_id"])
-    await _sync_variant_inventory_from_stocks(db, db_name=db_name, tenant_id=tenant_id, variant_ids=touched_variant_ids)
+    await _sync_variant_inventory_from_stocks(
+        db_name,
+        tenant_id=tenant_id,
+        variant_ids=touched_variant_ids,
+    )
 
 
-async def _mark_order_fulfillment_state(db: Session, *, db_name: str, tenant_id: str, order_lines: list, order) -> None:
+async def _mark_order_fulfillment_state(db_name: str, *, tenant_id: str, order_lines: list, order) -> None:
 
     db_name = await _db_name(tenant_id, db_name)
     if order_lines and all(line.get("fulfilled_quantity", 0) >= line.get("quantity", 0) for line in order_lines):
         await commerce_repository.update_order(db_name, order_id=order["id"], data={"status": "fulfilled"})
 
 
-async def _delivered_quantities_by_order_line(db: Session, *, db_name: str, tenant_id: str, order_id: str) -> dict[str, int]:
+async def _delivered_quantities_by_order_line(db_name: str, *, tenant_id: str, order_id: str) -> dict[str, int]:
 
     db_name = await _db_name(tenant_id, db_name)
     fulfillments = await commerce_repository.list_fulfillments(db_name, order_id=order_id)
@@ -2134,7 +2152,7 @@ async def _delivered_quantities_by_order_line(db: Session, *, db_name: str, tena
     return delivered_quantities
 
 
-async def _active_return_quantities_by_order_line(db: Session, *, db_name: str, tenant_id: str, order_id: str, exclude_return_id: str | None = None) -> dict[str, int]:
+async def _active_return_quantities_by_order_line(db_name: str, *, tenant_id: str, order_id: str, exclude_return_id: str | None = None) -> dict[str, int]:
 
     db_name = await _db_name(tenant_id, db_name)
     return_requests = await commerce_repository.list_returns(db_name, order_id=order_id)
@@ -2154,7 +2172,7 @@ async def _active_return_quantities_by_order_line(db: Session, *, db_name: str, 
     return returned_quantities
 
 
-async def _resolve_restock_warehouse_for_line(db: Session, *, db_name: str, tenant_id: str, order_line):
+async def _resolve_restock_warehouse_for_line(db_name: str, *, tenant_id: str, order_line):
 
     db_name = await _db_name(tenant_id, db_name)
     allocated_wh_id = order_line.get("allocated_warehouse_id")
@@ -2176,7 +2194,7 @@ async def _resolve_restock_warehouse_for_line(db: Session, *, db_name: str, tena
     raise ConflictError("No active warehouse is available to receive returned stock.")
 
 
-async def _restock_return_inventory(db: Session, *, db_name: str, tenant_id: str, return_request, return_lines: list, order_line_lookup: dict[str, Any], actor_user_id: str) -> None:
+async def _restock_return_inventory(db_name: str, *, tenant_id: str, return_request, return_lines: list, order_line_lookup: dict[str, Any], actor_user_id: str) -> None:
 
     db_name = await _db_name(tenant_id, db_name)
     touched_variant_ids: list[str] = []
@@ -2186,7 +2204,11 @@ async def _restock_return_inventory(db: Session, *, db_name: str, tenant_id: str
         order_line = order_line_lookup.get(line["order_line_id"])
         if order_line is None:
             raise ConflictError("Return line references an order line that no longer exists.")
-        warehouse = await _resolve_restock_warehouse_for_line(db, tenant_id=tenant_id, order_line=order_line)
+        warehouse = await _resolve_restock_warehouse_for_line(
+            db_name,
+            tenant_id=tenant_id,
+            order_line=order_line,
+        )
         stock = await commerce_repository.get_warehouse_stock(db_name,
             warehouse_id=warehouse["id"],
             variant_id=line["variant_id"])
@@ -2216,7 +2238,11 @@ async def _restock_return_inventory(db: Session, *, db_name: str, tenant_id: str
             notes=f"Restocked inventory from return {return_request.get('return_number')}.",
             recorded_by_user_id=actor_user_id)
         touched_variant_ids.append(line["variant_id"])
-    await _sync_variant_inventory_from_stocks(db, db_name=db_name, tenant_id=tenant_id, variant_ids=touched_variant_ids)
+    await _sync_variant_inventory_from_stocks(
+        db_name,
+        tenant_id=tenant_id,
+        variant_ids=touched_variant_ids,
+    )
 
 
 async def create_order(db: Session, *, db_name: str, tenant_slug: str, actor_user_id: str, customer_id: str, price_list_id: str | None, tax_profile_id: str | None, coupon_code: str | None, status: str, currency: str, lines: list[dict[str, int | str]]) -> dict[str, object]:
@@ -2388,7 +2414,12 @@ async def create_order(db: Session, *, db_name: str, tenant_slug: str, actor_use
                 order_lines=created_lines,
                 actor_user_id=actor_user_id)
         else:
-            await _reserve_inventory(db_name, tenant_id=tenant_slug, variants=variant_models, quantities=quantities)
+            await _reserve_inventory(
+                db_name,
+                tenant_id=tenant_slug,
+                variants=variant_models,
+                quantities=quantities,
+            )
 
     await _audit(
         db, tenant_id=tenant_slug,
@@ -2404,7 +2435,7 @@ async def create_order(db: Session, *, db_name: str, tenant_slug: str, actor_use
             "tax_minor": tax_minor,
             "total_minor": total_minor,
         })
-    await _outbox_order(db_name, tenant_id=tenant_slug, order=order)
+    await _outbox_order(db, db_name=db_name, tenant_id=tenant_slug, order=order)
     db.commit()
     
     # We serialize with fresh data if needed, but since we just created it, we can used what we have.
@@ -2420,7 +2451,7 @@ async def record_payment(db: Session, *, db_name: str, tenant_slug: str, actor_u
     if status not in PAYMENT_RECORD_STATUSES:
         raise ValidationError(f"Unsupported payment status '{status}'.")
 
-    await _recalculate_order_finance(db, order)
+    await _recalculate_order_finance(db_name, tenant_id=tenant_slug, order=order)
     # Refresh order after recalculate
     order = await _order_or_raise(db_name, tenant_id=tenant_slug, order_id=order_id)
     if status in {"authorized", "captured"} and amount_minor > order.get("balance_minor", 0):
@@ -2437,7 +2468,7 @@ async def record_payment(db: Session, *, db_name: str, tenant_slug: str, actor_u
         notes=notes,
         received_at=datetime.now(tz=UTC).isoformat(),
         recorded_by_user_id=actor_user_id)
-    await _recalculate_order_finance(db, order)
+    await _recalculate_order_finance(db_name, tenant_id=tenant_slug, order=order)
     await _audit(
         db, tenant_id=tenant_slug,
         actor_user_id=actor_user_id,
@@ -2479,7 +2510,7 @@ async def record_refund(db: Session, *, db_name: str, tenant_slug: str, actor_us
     if amount_minor == refundable_balance_minor:
         await commerce_repository.update_payment(db_name, payment_id=payment["id"], data={"status": "refunded"})
     
-    await _recalculate_order_finance(db, order)
+    await _recalculate_order_finance(db_name, tenant_id=tenant_slug, order=order)
     await _audit(
         db, tenant_id=tenant_slug,
         actor_user_id=actor_user_id,
@@ -2497,12 +2528,23 @@ async def create_return(db: Session, *, db_name: str, tenant_slug: str, actor_us
 
     # Parallelize initial validations
     order_lines_task = commerce_repository.list_order_lines_for_orders(db_name, order_ids=[order["id"]])
-    delivered_task = _delivered_quantities_by_order_line(db_name, tenant_id=tenant_slug, order_id=order["id"])
+    delivered_task = _delivered_quantities_by_order_line(
+        db_name,
+        tenant_id=tenant_slug,
+        order_id=order["id"],
+    )
     returns_task = commerce_repository.list_returns(db_name, order_id=order["id"])
-    active_returns_task = _active_return_quantities_by_order_line(db_name, tenant_id=tenant_slug, order_id=order["id"])
+    active_returns_task = _active_return_quantities_by_order_line(
+        db_name,
+        tenant_id=tenant_slug,
+        order_id=order["id"],
+    )
 
     order_lines, delivered_quantities, existing_returns, active_return_quantities = await asyncio.gather(
-        order_lines_task, delivered_task, returns_task, active_return_task
+        order_lines_task,
+        delivered_task,
+        returns_task,
+        active_returns_task,
     )
 
     if not order_lines:
@@ -2562,7 +2604,11 @@ async def create_return(db: Session, *, db_name: str, tenant_slug: str, actor_us
 
         restock_on_receive = bool(item.get("restock_on_receive", True))
         if restock_on_receive:
-            await _resolve_restock_warehouse_for_line(db_name, tenant_id=tenant_slug, order_line=order_line)
+            await _resolve_restock_warehouse_for_line(
+                db_name,
+                tenant_id=tenant_slug,
+                order_line=order_line,
+            )
 
         created_line = await commerce_repository.create_return_line(db_name,
                 return_id=created_return["id"],
@@ -2587,7 +2633,12 @@ async def create_return(db: Session, *, db_name: str, tenant_slug: str, actor_us
             "return_number": created_return.get("return_number"),
             "line_count": len(created_lines),
         })
-    await _outbox_return(db_name, tenant_id=tenant_slug, return_request=created_return)
+    await _outbox_return(
+        db,
+        db_name=db_name,
+        tenant_id=tenant_slug,
+        return_request=created_return,
+    )
     db.commit()
     return await get_return_detail(db, tenant_slug=tenant_slug, return_id=created_return["id"])
 
@@ -2621,11 +2672,13 @@ async def update_return_status(db: Session, *, db_name: str, tenant_slug: str, a
         order = await _order_or_raise(db_name, tenant_id=tenant_slug, order_id=return_request["order_id"])
         order_lines = await commerce_repository.list_order_lines_for_orders(db_name, order_ids=[order["id"]])
         await _restock_return_inventory(
-            db_name, tenant_id=tenant_slug,
+            db_name,
+            tenant_id=tenant_slug,
             return_request=return_request,
             return_lines=return_lines,
             order_line_lookup={line["id"]: line for line in order_lines},
-            actor_user_id=actor_user_id)
+            actor_user_id=actor_user_id,
+        )
         update_data["inventory_restocked"] = True
         update_data["received_at"] = return_request.get("received_at") or now
     elif normalized_status in {"rejected", "completed", "cancelled"}:
@@ -2765,7 +2818,12 @@ async def create_settlement(db: Session, *, db_name: str, tenant_slug: str, acto
             "refunds_minor": refunds_minor,
             "net_minor": net_minor,
         })
-    await _outbox_settlement(db_name, tenant_id=tenant_slug, settlement=settlement)
+    await _outbox_settlement(
+        db,
+        db_name=db_name,
+        tenant_id=tenant_slug,
+        settlement=settlement,
+    )
     db.commit()
     return await get_settlement_detail(db, tenant_slug=tenant_slug, settlement_id=settlement["id"])
 
@@ -2801,7 +2859,12 @@ async def update_settlement_status(db: Session, *, db_name: str, tenant_slug: st
         subject_type="commerce_settlement",
         subject_id=str(settlement["id"]),
         metadata={"status": normalized_status, "settlement_number": settlement.get("settlement_number")})
-    await _outbox_settlement(db_name, tenant_id=tenant_slug, settlement=settlement)
+    await _outbox_settlement(
+        db,
+        db_name=db_name,
+        tenant_id=tenant_slug,
+        settlement=settlement,
+    )
     db.commit()
     return await get_settlement_detail(db, tenant_slug=tenant_slug, settlement_id=settlement_id)
 
@@ -2809,7 +2872,7 @@ async def update_settlement_status(db: Session, *, db_name: str, tenant_slug: st
 async def issue_order_invoice(db: Session, *, db_name: str, tenant_slug: str, actor_user_id: str, order_id: str) -> dict[str, object]:
     db_name = await _db_name(tenant_slug, db_name)
     order = await _order_or_raise(db_name, tenant_id=tenant_slug, order_id=order_id)
-    await _recalculate_order_finance(db, order)
+    await _recalculate_order_finance(db_name, tenant_id=tenant_slug, order=order)
     # Refresh order after recalculate
     order = await _order_or_raise(db_name, tenant_id=tenant_slug, order_id=order_id)
     if order.get("balance_minor", 0) != 0:
@@ -2844,7 +2907,7 @@ async def issue_order_invoice(db: Session, *, db_name: str, tenant_slug: str, ac
         subject_type="commerce_order",
         subject_id=str(order["id"]),
         metadata={"invoice_number": invoice["invoice_number"], "customer_id": str(order.get("customer_id"))})
-    await _outbox_invoice(db_name, tenant_id=tenant_slug, order=order)
+    await _outbox_invoice(db, db_name=db_name, tenant_id=tenant_slug, order=order)
     db.commit()
     return await get_order_finance_detail(db, tenant_slug=tenant_slug, order_id=order_id)
 
@@ -2955,7 +3018,12 @@ async def create_fulfillment(db: Session, *, db_name: str, tenant_slug: str, act
             "warehouse_id": str(fulfillment.get("warehouse_id")) if fulfillment.get("warehouse_id") else None,
             "line_count": len(created_lines),
         })
-    await _outbox_fulfillment(db_name, tenant_id=tenant_slug, fulfillment=fulfillment)
+    await _outbox_fulfillment(
+        db,
+        db_name=db_name,
+        tenant_id=tenant_slug,
+        fulfillment=fulfillment,
+    )
     db.commit()
     return _serialize_fulfillment(
         fulfillment,
@@ -2992,7 +3060,12 @@ async def update_fulfillment_status(db: Session, *, db_name: str, tenant_slug: s
         subject_type="commerce_fulfillment",
         subject_id=str(fulfillment["id"]),
         metadata={"status": fulfillment.get("status")})
-    await _outbox_fulfillment(db_name, tenant_id=tenant_slug, fulfillment=fulfillment)
+    await _outbox_fulfillment(
+        db,
+        db_name=db_name,
+        tenant_id=tenant_slug,
+        fulfillment=fulfillment,
+    )
     db.commit()
     return _serialize_fulfillment(
         fulfillment,
@@ -3068,8 +3141,7 @@ async def create_shipment(db: Session, *, db_name: str, tenant_slug: str, actor_
 
     if touched_variant_ids:
         await _sync_variant_inventory_from_stocks(
-            db,
-            db_name=db_name,
+            db_name,
             tenant_id=tenant_slug,
             variant_ids=touched_variant_ids,
         )
@@ -3101,8 +3173,13 @@ async def create_shipment(db: Session, *, db_name: str, tenant_slug: str, actor_
             "tracking_number": shipment.get("tracking_number"),
             "carrier": shipment.get("carrier"),
         })
-    await _outbox_shipment(db_name, tenant_id=tenant_slug, shipment=shipment)
-    await _outbox_fulfillment(db_name, tenant_id=tenant_slug, fulfillment=fulfillment)
+    await _outbox_shipment(db, db_name=db_name, tenant_id=tenant_slug, shipment=shipment)
+    await _outbox_fulfillment(
+        db,
+        db_name=db_name,
+        tenant_id=tenant_slug,
+        fulfillment=fulfillment,
+    )
     db.commit()
     return _serialize_shipment(shipment)
 
@@ -3135,8 +3212,13 @@ async def update_shipment_status(db: Session, *, db_name: str, tenant_slug: str,
         subject_type="commerce_shipment",
         subject_id=str(shipment["id"]),
         metadata={"status": shipment.get("status"), "tracking_number": shipment.get("tracking_number")})
-    await _outbox_shipment(db_name, tenant_id=tenant_slug, shipment=shipment)
-    await _outbox_fulfillment(db_name, tenant_id=tenant_slug, fulfillment=fulfillment)
+    await _outbox_shipment(db, db_name=db_name, tenant_id=tenant_slug, shipment=shipment)
+    await _outbox_fulfillment(
+        db,
+        db_name=db_name,
+        tenant_id=tenant_slug,
+        fulfillment=fulfillment,
+    )
     db.commit()
     return _serialize_shipment(shipment)
 
@@ -3168,7 +3250,12 @@ async def update_order_status(db: Session, *, db_name: str, tenant_slug: str, ac
                 order_lines=lines,
                 actor_user_id=actor_user_id)
         else:
-            await _reserve_inventory(db_name, tenant_id=tenant_slug, variants=variant_models, quantities=outstanding_quantities)
+            await _reserve_inventory(
+                db_name,
+                tenant_id=tenant_slug,
+                variants=variant_models,
+                quantities=outstanding_quantities,
+            )
         update_data["inventory_reserved"] = True
         update_data["placed_at"] = order.get("placed_at") or datetime.now(tz=UTC).isoformat()
     elif order.get("inventory_reserved") and status == "cancelled":
@@ -3180,14 +3267,19 @@ async def update_order_status(db: Session, *, db_name: str, tenant_slug: str, ac
                 order_lines=warehouse_allocated_lines,
                 actor_user_id=actor_user_id)
         else:
-            await _restore_inventory(db_name, tenant_id=tenant_slug, variants=variant_models, quantities=outstanding_quantities)
+            await _restore_inventory(
+                db_name,
+                tenant_id=tenant_slug,
+                variants=variant_models,
+                quantities=outstanding_quantities,
+            )
         update_data["inventory_reserved"] = False
 
     await commerce_repository.update_order(db_name, order_id=order_id, data=update_data)
     
     # Refresh order for finance recalc, audit, and serialization
     order = await _order_or_raise(db_name, tenant_id=tenant_slug, order_id=order_id)
-    await _recalculate_order_finance(db, order)
+    await _recalculate_order_finance(db_name, tenant_id=tenant_slug, order=order)
     
     # Refresh again after finance recalc
     order = await _order_or_raise(db_name, tenant_id=tenant_slug, order_id=order_id)
