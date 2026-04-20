@@ -136,6 +136,27 @@ cd /path/to/kalpzero-enterprise
 export REPO_ROOT="$(pwd)"
 ```
 
+## Live Deployment
+
+Current live deployment on this server uses:
+
+- Public domain: `https://kalptree.xyz`
+- Public API base: `https://kalptree.xyz/api`
+- Internal frontend listener: `127.0.0.1:3002`
+- Internal backend listener: `127.0.0.1:8012`
+- PM2 apps: `kalpzero-web`, `kalpzero-api`
+- Auto-commit check script: `scripts/auto-deploy-live.sh`
+- Deploy script: `scripts/deploy-live.sh`
+- Auto-deploy log: `/tmp/kalpzero-auto-deploy.log`
+- Server operations guide: `OPERATIONS.md`
+
+Important:
+
+- These are the live server ports behind Nginx and PM2.
+- The local development commands below intentionally still use `3000`, `8000`,
+  and `8010` where documented. Those are local-only development ports, not the
+  live deployment ports.
+
 ## Setup
 
 Run these first:
@@ -206,7 +227,7 @@ It checks:
 - local `psql`, `redis-cli`, and `mongosh` availability
 - live Postgres, Redis, and Mongo connections when those tools exist
 
-## Run Commands
+## Local Run Commands
 
 ### Quick Local API
 
@@ -267,7 +288,7 @@ curl http://127.0.0.1:8000/health/live
 curl http://127.0.0.1:8000/health/ready
 ```
 
-### One Command Super Admin Bootstrap
+### One Command Super Admin Bootstrap (Local)
 
 This is the fastest way to get the Super Admin UI running locally:
 
@@ -292,7 +313,7 @@ Default sign-ins after bootstrap:
 - Super Admin: `founder@kalpzero.com` / `very-secure-password`
 - Tenant Admin: `ops@tenant.com` / `very-secure-password` with tenant slug `demo-tenant`
 
-### Backend Onboarding Smoke Flow
+### Backend Onboarding Smoke Flow (Local Infra)
 
 Use this against `pnpm dev:api:infra` to verify the pilot onboarding path.
 
@@ -362,7 +383,7 @@ role. Use one of these forms in `apps/api/.env`:
 
 Do not use `postgres:postgres@localhost` unless you actually created that role.
 
-### If Port `8000` Or `8010` Is Already In Use
+### If Port `8000` Or `8010` Is Already In Use (Local)
 
 Check the running process first:
 
@@ -374,7 +395,7 @@ lsof -nP -iTCP:8010 -sTCP:LISTEN
 Then stop the old process or use the matching already-running API instead of
 starting another copy.
 
-### Web App
+### Local Web App
 
 ```bash
 cd "$REPO_ROOT"

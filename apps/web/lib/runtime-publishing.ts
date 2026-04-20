@@ -4,10 +4,16 @@ import type {
   ThemeTokensDto
 } from "@kalpzero/contracts";
 
-const apiBaseUrl =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
+function normalizeApiBaseUrl(value: string) {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+const apiBaseUrl = normalizeApiBaseUrl(
+  process.env.KALPZERO_INTERNAL_API_URL ??
+  process.env.KALPZERO_API_PROXY_URL ??
   process.env.KALPZERO_PUBLIC_API_URL ??
-  "http://localhost:8000";
+  "http://127.0.0.1:8012"
+);
 
 function titleCaseFromSlug(value: string) {
   return value

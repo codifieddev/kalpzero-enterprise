@@ -173,7 +173,37 @@ export interface OutboxEventsResponseDto {
   events: OutboxEventDto[];
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_KALPZERO_API_URL ?? "http://127.0.0.1:8000";
+function normalizeApiBaseUrl(value: string) {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function isAbsoluteApiBaseUrl(value: string) {
+  return value.startsWith("http://") || value.startsWith("https://");
+}
+
+function getBrowserApiBaseUrl() {
+  return normalizeApiBaseUrl(
+    process.env.NEXT_PUBLIC_KALPZERO_API_URL ??
+    process.env.NEXT_PUBLIC_API_BASE_URL ??
+    "/api"
+  );
+}
+
+function getServerApiBaseUrl() {
+  const publicApiBaseUrl =
+    process.env.NEXT_PUBLIC_KALPZERO_API_URL ??
+    process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  if (publicApiBaseUrl && isAbsoluteApiBaseUrl(publicApiBaseUrl)) {
+    return normalizeApiBaseUrl(publicApiBaseUrl);
+  }
+
+  return "http://127.0.0.1:8012";
+}
+
+function resolveApiBaseUrl() {
+  return typeof window === "undefined" ? getServerApiBaseUrl() : getBrowserApiBaseUrl();
+}
 
 class ApiError extends Error {
   status: number;
@@ -185,13 +215,14 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
+  const apiBaseUrl = resolveApiBaseUrl();
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers,
     cache: "no-store"
@@ -214,7 +245,7 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
 }
 
 export function getApiBaseUrl() {
-  return API_BASE_URL;
+  return resolveApiBaseUrl();
 }
 
 export function isApiError(error: unknown): error is ApiError {

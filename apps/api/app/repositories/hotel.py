@@ -23,6 +23,8 @@ from app.models.hotel import (
     HotelRoom,
     HotelRoomMove,
     HotelRoomType,
+    HotelStaffMember,
+    HotelStay,
     HotelShift,
     HotelNightAudit,
     HOTEL_MODELS

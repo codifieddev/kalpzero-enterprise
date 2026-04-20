@@ -51,7 +51,7 @@ async def create_category(
     bannerImageUrl: str | None,
     metaTitle: str | None,
     metaDescription: str | None,
-    db_name: str) -> dict[str, Any]:
+) -> dict[str, Any]:
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
     doc = {
         "name": name,
@@ -955,5 +955,4 @@ async def get_settlement(db_name: str, *, settlement_id: str) -> dict[str, Any] 
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
     doc = await db["commerce_settlements"].find_one({"_id": settlement_id})
     return _map_id(doc)
-
 
