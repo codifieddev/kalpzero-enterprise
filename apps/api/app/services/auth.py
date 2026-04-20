@@ -111,6 +111,7 @@ def authenticate_user(
     password: str,
 ) -> UserModel:
     user = db.scalar(select(UserModel).where(UserModel.email == email))
+    print("user---1", user)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

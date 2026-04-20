@@ -18,6 +18,10 @@ class LoginRequest(BaseModel):
     tenant_slug: str | None = None
 
 
+class MagicLoginRequest(BaseModel):
+    user_id: str
+
+
 class CreateAgencyRequest(BaseModel):
     slug: str = Field(min_length=3, max_length=120)
     name: str = Field(min_length=2, max_length=255)

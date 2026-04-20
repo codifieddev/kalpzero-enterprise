@@ -5,7 +5,7 @@ export interface AuthUser {
   id?: string;
   name?:string;
   email?: string;
-  roles?: string;
+  role?: string;
   tenant_id?:string;
   tenant_slug?: string;
   access_token?: string;
