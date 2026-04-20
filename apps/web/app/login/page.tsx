@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, startTransition } from 'react';
+import { useState, startTransition, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Activity, Mail, Lock, User, ArrowRight, Sparkles } from 'lucide-react';
+import { Activity, Mail, Lock, User, ArrowRight, Sparkles, ShieldCheck, Building2, Fingerprint } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
+import { getMagicOptions, type MagicUser } from '@/lib/api';
 
 const roleModes = [
   {
@@ -23,16 +24,29 @@ export default function LoginPage() {
     const [isRegister, setIsRegister] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const { login } = useAuth();
+    const { login, magicLogin } = useAuth();
     const [mode, setMode] = useState<RoleMode>("platform");
-    // const [email, setEmail] = useState("founder@kalpzero.com");
-    // const [password, setPassword] = useState("1234567899");
+    const [magicUsers, setMagicUsers] = useState<MagicUser[]>([]);
+    const [showMagic, setShowMagic] = useState(true);
+    
     const [form, setForm] = useState({
-        email: 'founder@kalpzero.com',
+        email: 'admin@kalpzero.com',
         password: '1234567899',
         name: '',
         tenantKey: 'demo',
     });
+
+    useEffect(() => {
+        const fetchMagic = async () => {
+            try {
+                const response = await getMagicOptions();
+                setMagicUsers(response.users);
+            } catch (err) {
+                console.error("Failed to fetch magic options", err);
+            }
+        };
+        fetchMagic();
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -45,16 +59,31 @@ export default function LoginPage() {
                 password: form.password,
                 tenant_slug: mode === "tenant" ? form.tenantKey : undefined
             });
-            console.log(session);
-            
-            if (session?.roles) {
+         
+            if (session?.role) {
                 startTransition(() => {
-                    router.push(session.roles.includes("platform_admin") ? "/platform" : "/tenant");
+                    router.push(session.role === "platform_admin" ? "/dashboard" : "/tenant");
                 });
             }
         } catch (submissionError) {
             setError(submissionError instanceof Error ? submissionError.message : "Unable to sign in.");
         } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleMagicLogin = async (userId: string) => {
+        setLoading(true);
+        setError('');
+        try {
+            const session = await magicLogin(userId);
+            if (session?.role) {
+                startTransition(() => {
+                    router.push(session.role === "platform_admin" ? "/platform" : "/tenant");
+                });
+            }
+        } catch (submissionError) {
+            setError(submissionError instanceof Error ? submissionError.message : "Magic login failed.");
             setLoading(false);
         }
     };
@@ -105,6 +134,47 @@ export default function LoginPage() {
                             {error}
                         </div>
                     )}
+
+                    {showMagic && magicUsers.length > 0 && (
+                        <div className="mb-8 p-4 bg-cyan-950/20 border border-cyan-500/20 rounded-xl">
+                            <div className="flex items-center gap-2 mb-4 text-cyan-400">
+                                <Fingerprint size={16} />
+                                <span className="text-xs font-bold uppercase tracking-wider">Magic Login (Testing)</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2">
+                                {magicUsers.map((user) => (
+                                    <button
+                                        key={user.id}
+                                        onClick={() => handleMagicLogin(user.id)}
+                                        disabled={loading}
+                                        className="group relative flex items-center justify-between p-3 rounded-lg bg-slate-800/40 border border-slate-700/50 hover:border-cyan-500/50 hover:bg-slate-800 transition-all text-left"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-lg ${user.role === 'platform_admin' ? 'bg-violet-500/10 text-violet-400' : 'bg-cyan-500/10 text-cyan-400'}`}>
+                                                {user.role === 'platform_admin' ? <ShieldCheck size={18} /> : <Building2 size={18} />}
+                                            </div>
+                                            <div>
+                                                <div className="text-sm font-bold text-white group-hover:text-cyan-400 transition-colors">{user.name}</div>
+                                                <div className="text-[10px] text-slate-500 uppercase tracking-tight">
+                                                    {user.role} {user.tenant_slug ? `• ${user.tenant_slug}` : ''}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <ArrowRight size={14} className="text-slate-600 group-hover:text-cyan-400 transform group-hover:translate-x-1 transition-all" />
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="relative mb-8 text-center">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-slate-800"></div>
+                        </div>
+                        <span className="relative px-4 bg-[#0a0f1d] text-[10px] uppercase font-bold tracking-widest text-slate-600">
+                            {showMagic ? 'Or Manual Auth' : 'Authenticate'}
+                        </span>
+                    </div>
 
                     <form onSubmit={handleSubmit} className="space-y-5">
 

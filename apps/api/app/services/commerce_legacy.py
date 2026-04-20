@@ -2,7 +2,6 @@ from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-import bcrypt
 import yaml
 from sqlalchemy.orm import Session
 

@@ -1,7 +1,9 @@
 export interface SessionDto {
-  user_id: string;
+  email: string;
   tenant_id: string;
-  roles: string[];
+  role: string;
+  name: string;
+  isTenantOwner: boolean;
 }
 
 export interface LoginPayload {
@@ -14,6 +16,18 @@ export interface LoginResponseDto {
   access_token: string;
   expires_at: string;
   session: SessionDto;
+}
+
+export interface MagicUser {
+  id: string;
+  email: string;
+  role: string;
+  name: string;
+  tenant_slug: string | null;
+}
+
+export interface MagicOptionsResponseDto {
+  users: MagicUser[];
 }
 
 export interface AgencyDto {
@@ -236,6 +250,17 @@ export async function register(payload: RegisterPayload) {
 
 export async function getCurrentSession(token: string) {
   return request<SessionDto>("/auth/me", undefined, token);
+}
+
+export async function getMagicOptions() {
+  return request<MagicOptionsResponseDto>("/auth/magic/options");
+}
+
+export async function magicLogin(userId: string) {
+  return request<LoginResponseDto>("/auth/magic/login", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId })
+  });
 }
 
 export async function getAgencies(token: string) {

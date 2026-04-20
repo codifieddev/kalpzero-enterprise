@@ -222,3 +222,15 @@ async def travel_legacy_plan(
     _: SessionContext = Depends(require_permission("imports.sources.read")),
 ):
     return load_legacy_travel_plan()
+
+
+router.add_api_route("/overview", travel_overview, methods=["GET"])
+router.add_api_route("/packages", travel_packages, methods=["GET"])
+router.add_api_route("/packages", travel_packages_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/departures", travel_departures, methods=["GET"])
+router.add_api_route("/departures", travel_departures_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/departures/{departure_id}/status", travel_departures_update_status, methods=["PATCH"])
+router.add_api_route("/leads", travel_leads, methods=["GET"])
+router.add_api_route("/leads", travel_leads_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/leads/{lead_id}/status", travel_leads_update_status, methods=["PATCH"])
+router.add_api_route("/legacy/plan", travel_legacy_plan, methods=["GET"])

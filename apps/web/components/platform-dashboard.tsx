@@ -52,7 +52,7 @@ export function PlatformDashboard() {
       return;
     }
 
-    if (!session?.roles.includes("platform_admin")) {
+    if (session?.role !== "platform_admin") {
       router.push("/tenant");
       return;
     }
@@ -88,7 +88,7 @@ export function PlatformDashboard() {
     return () => {
       active = false;
     };
-  }, [router, session?.roles, status, token]);
+  }, [router, session?.role, status, token]);
 
   async function openTenantWorkspace(tenantSlug: string) {
     try {
@@ -162,10 +162,10 @@ export function PlatformDashboard() {
                           <h3 className="text-lg font-semibold text-foreground">{tenant.display_name}</h3>
                           <Badge variant="outline">{tenant.slug}</Badge>
                         </div>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          {tenant.vertical_packs.join(" + ")} • {tenant.infra_mode} infra • runtime DB{" "}
+                        {/* <p className="mt-1 text-sm text-muted-foreground">
+                          {tenant?.vertical_packs?.join(" + ")} • {tenant.infra_mode} infra • runtime DB{" "}
                           <span className="font-medium text-foreground">{tenant.runtime_documents?.database ?? "pending"}</span>
-                        </p>
+                        </p> */}
                       </div>
                       <div className="flex gap-2">
                         <Button variant="outline" onClick={() => openTenantWorkspace(tenant.slug)}>

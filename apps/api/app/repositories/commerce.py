@@ -40,6 +40,8 @@ async def find_category_by_slug(db_name: str, slug: str) -> dict[str, Any] | Non
     return _map_id(doc)
 
 async def create_category(
+    db_name: str,
+    *,
     name: str,
     slug: str,
     type: str,

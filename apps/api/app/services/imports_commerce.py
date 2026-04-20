@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from types import SimpleNamespace
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.db.models import TenantModel
 from app.repositories import commerce as commerce_repository
 from app.services import commerce as commerce_service
 from app.services.errors import ConflictError, NotFoundError, ValidationError
@@ -24,6 +25,21 @@ SUPPORTED_COMMERCE_IMPORT_KEYS = (
 )
 
 
+def _tenant_context(db: Session, *, tenant_id: str) -> tuple[str, str]:
+    tenant_row = db.execute(
+        select(TenantModel.slug, TenantModel.mongo_db_name).where(TenantModel.id == tenant_id)
+    ).first()
+    if tenant_row is None:
+        raise NotFoundError(f"Tenant with ID '{tenant_id}' not found.")
+    tenant_slug, tenant_db_name = tenant_row
+    resolved_db_name = str(tenant_db_name or tenant_slug)
+    return str(tenant_slug), resolved_db_name
+
+
+async def _repo_call(db_name: str, operation: str, /, **kwargs):
+    return await getattr(commerce_repository, operation)(db_name, **kwargs)
+
+
 async def run_commerce_import_job(
     db: Session,
     *,
@@ -40,7 +56,13 @@ async def run_commerce_import_job(
         raise ValidationError("Commerce import source config requires a dataset object.")
 
     report = _make_report(source=source, mode=mode, dataset=dataset)
-    plan = await _build_commerce_import_plan(db, tenant_id=tenant_id, dataset=dataset, report=report)
+    plan = await _build_commerce_import_plan(
+        db,
+        tenant_id=tenant_id,
+        db_name=tenant_db_name,
+        dataset=dataset,
+        report=report,
+    )
     _finalize_report_counts(report)
 
     if report["errors"]:
@@ -62,6 +84,7 @@ async def run_commerce_import_job(
         await _execute_commerce_import_plan(
             db,
             tenant_id=tenant_id,
+            db_name=tenant_db_name,
             actor_user_id=actor_user_id,
             job_id=job_id,
             plan=plan,
@@ -182,6 +205,7 @@ async def _build_commerce_import_plan(
     db: Session,
     *,
     tenant_id: str,
+    db_name: str,
     dataset: dict[str, object],
     report: dict[str, object],
 ) -> dict[str, list[dict[str, Any]]]:
@@ -217,9 +241,9 @@ async def _build_commerce_import_plan(
     existing_attribute_sets_by_slug = {_norm_slug(item["slug"]): item for item in attribute_sets}
     existing_products_by_slug = {_norm_slug(item["slug"]): item for item in products}
     
-    existing_variants = await commerce_repository.list_variants_for_products(
-        db,
-        tenant_id=tenant_id,
+    existing_variants = await _repo_call(
+        db_name,
+        "list_variants_for_products",
         product_ids=[item["id"] for item in products],
     )
     existing_variants_by_sku = {_norm_code(item["sku"]): item for item in existing_variants}
@@ -791,13 +815,14 @@ async def _execute_commerce_import_plan(
     db: Session,
     *,
     tenant_id: str,
+    db_name: str,
     actor_user_id: str,
     job_id: str,
     plan: dict[str, list[dict[str, Any]]],
     report: dict[str, object],
 ) -> None:
     category_lookup = {
-        _norm_slug(item["slug"]): item for item in await commerce_repository.list_categories(db, tenant_id=tenant_id)
+        _norm_slug(item["slug"]): item for item in await _repo_call(db_name, "list_categories")
     }
     unresolved_categories = list(plan["categories"])
     while unresolved_categories:
@@ -808,9 +833,9 @@ async def _execute_commerce_import_plan(
             if item["parent_slug"] and parent is None:
                 remaining.append(item)
                 continue
-            created = await commerce_repository.create_category(
-                db,
-                tenant_id=tenant_id,
+            created = await _repo_call(
+                db_name,
+                "create_category",
                 name=item["name"],
                 slug=item["slug"],
                 description=item["description"],
@@ -823,12 +848,12 @@ async def _execute_commerce_import_plan(
             raise ValidationError("Category hierarchy could not be resolved during execution.")
         unresolved_categories = remaining
 
-    brands_list = await commerce_repository.list_brands(db, tenant_id=tenant_id)
+    brands_list = await _repo_call(db_name, "list_brands")
     brand_lookup = {_norm_slug(item["slug"]): item for item in brands_list}
     for item in plan["brands"]:
-        created = await commerce_repository.create_brand(
-            db,
-            tenant_id=tenant_id,
+        created = await _repo_call(
+            db_name,
+            "create_brand",
             name=item["name"],
             slug=item["slug"],
             code=item["code"],
@@ -838,12 +863,12 @@ async def _execute_commerce_import_plan(
         brand_lookup[item["slug"]] = created
         report["entities"]["brands"]["created"] += 1
 
-    vendors_list = await commerce_repository.list_vendors(db, tenant_id=tenant_id)
+    vendors_list = await _repo_call(db_name, "list_vendors")
     vendor_lookup = {_norm_slug(item["slug"]): item for item in vendors_list}
     for item in plan["vendors"]:
-        created = await commerce_repository.create_vendor(
-            db,
-            tenant_id=tenant_id,
+        created = await _repo_call(
+            db_name,
+            "create_vendor",
             name=item["name"],
             slug=item["slug"],
             code=item["code"],
@@ -856,12 +881,12 @@ async def _execute_commerce_import_plan(
         vendor_lookup[item["slug"]] = created
         report["entities"]["vendors"]["created"] += 1
 
-    collections_list = await commerce_repository.list_collections(db, tenant_id=tenant_id)
+    collections_list = await _repo_call(db_name, "list_collections")
     collection_lookup = {_norm_slug(item["slug"]): item for item in collections_list}
     for item in plan["collections"]:
-        created = await commerce_repository.create_collection(
-            db,
-            tenant_id=tenant_id,
+        created = await _repo_call(
+            db_name,
+            "create_collection",
             name=item["name"],
             slug=item["slug"],
             description=item["description"],
@@ -871,12 +896,12 @@ async def _execute_commerce_import_plan(
         collection_lookup[item["slug"]] = created
         report["entities"]["collections"]["created"] += 1
 
-    warehouses_list = await commerce_repository.list_warehouses(db, tenant_id=tenant_id)
+    warehouses_list = await _repo_call(db_name, "list_warehouses")
     warehouse_lookup = {_norm_slug(item["slug"]): item for item in warehouses_list}
     for item in plan["warehouses"]:
-        created = await commerce_repository.create_warehouse(
-            db,
-            tenant_id=tenant_id,
+        created = await _repo_call(
+            db_name,
+            "create_warehouse",
             name=item["name"],
             slug=item["slug"],
             code=item["code"],
@@ -888,12 +913,12 @@ async def _execute_commerce_import_plan(
         warehouse_lookup[item["slug"]] = created
         report["entities"]["warehouses"]["created"] += 1
 
-    tax_profiles_list = await commerce_repository.list_tax_profiles(db, tenant_id=tenant_id)
+    tax_profiles_list = await _repo_call(db_name, "list_tax_profiles")
     tax_profile_lookup = {_norm_code(item["code"]): item for item in tax_profiles_list}
     for item in plan["tax_profiles"]:
-        created = await commerce_repository.create_tax_profile(
-            db,
-            tenant_id=tenant_id,
+        created = await _repo_call(
+            db_name,
+            "create_tax_profile",
             name=item["name"],
             code=item["code"],
             description=item["description"],
@@ -906,7 +931,7 @@ async def _execute_commerce_import_plan(
 
 
 
-    attribute_sets_list = await commerce_repository.list_attribute_sets(db, tenant_id=tenant_id)
+    attribute_sets_list = await _repo_call(db_name, "list_attribute_sets")
     attribute_set_lookup = {_norm_slug(item["slug"]): item for item in attribute_sets_list}
     for item in plan["attribute_sets"]:
         attrs = item["attributes"]
@@ -924,12 +949,12 @@ async def _execute_commerce_import_plan(
         attribute_set_lookup[item["slug"]] = created
         report["entities"]["attribute_sets"]["created"] += 1
 
-    products_list = await commerce_repository.list_products(db, tenant_id=tenant_id)
+    products_list = await _repo_call(db_name, "list_products")
     product_lookup = {_norm_slug(item["slug"]): item for item in products_list}
     
-    variants_list = await commerce_repository.list_variants_for_products(
-        db,
-        tenant_id=tenant_id,
+    variants_list = await _repo_call(
+        db_name,
+        "list_variants_for_products",
         product_ids=[item["id"] for item in product_lookup.values()],
     )
     variant_lookup_by_sku = {_norm_code(item["sku"]): item for item in variants_list}
@@ -938,6 +963,7 @@ async def _execute_commerce_import_plan(
         created_product, created_variants = await _create_product_from_import(
             db,
             tenant_id=tenant_id,
+            db_name=db_name,
             actor_user_id=actor_user_id,
             job_id=job_id,
             payload=item,
@@ -953,12 +979,12 @@ async def _execute_commerce_import_plan(
             variant_lookup_by_sku[_norm_code(variant["sku"])] = variant
         report["entities"]["products"]["created"] += 1
 
-    price_lists_list = await commerce_repository.list_price_lists(db, tenant_id=tenant_id)
+    price_lists_list = await _repo_call(db_name, "list_price_lists")
     price_list_lookup = {_norm_slug(item["slug"]): item for item in price_lists_list}
     for item in plan["price_lists"]:
-        created = await commerce_repository.create_price_list(
-            db,
-            tenant_id=tenant_id,
+        created = await _repo_call(
+            db_name,
+            "create_price_list",
             name=item["name"],
             slug=item["slug"],
             currency=item["currency"],
@@ -968,9 +994,9 @@ async def _execute_commerce_import_plan(
         )
         for price_item in item["items"]:
             variant = variant_lookup_by_sku[price_item["variant_sku"]]
-            await commerce_repository.create_price_list_item(
-                db,
-                tenant_id=tenant_id,
+            await _repo_call(
+                db_name,
+                "create_price_list_item",
                 price_list_id=created["id"],
                 variant_id=variant["id"],
                 price_minor=price_item["price_minor"],
@@ -981,9 +1007,9 @@ async def _execute_commerce_import_plan(
     for item in plan["coupons"]:
         cat_ids = [category_lookup[slug]["id"] for slug in item["applicable_category_slugs"]]
         var_ids = [variant_lookup_by_sku[sku]["id"] for sku in item["applicable_variant_skus"]]
-        await commerce_repository.create_coupon(
-            db,
-            tenant_id=tenant_id,
+        await _repo_call(
+            db_name,
+            "create_coupon",
             code=item["code"],
             description=item["description"],
             discount_type=item["discount_type"],
@@ -1001,6 +1027,7 @@ async def _create_product_from_import(
     db: Session,
     *,
     tenant_id: str,
+    db_name: str,
     actor_user_id: str,
     job_id: str,
     payload: dict[str, Any],
@@ -1013,9 +1040,9 @@ async def _create_product_from_import(
 ):
     attribute_set = attribute_set_lookup.get(payload["attribute_set_slug"]) if payload["attribute_set_slug"] else None
 
-    product = await commerce_repository.create_product(
-        db,
-        tenant_id=tenant_id,
+    product = await _repo_call(
+        db_name,
+        "create_product",
         name=payload["name"],
         slug=payload["slug"],
         description=payload["description"],
@@ -1045,6 +1072,7 @@ async def _create_product_from_import(
         await _seed_variant_warehouse_stock(
             db,
             tenant_id=tenant_id,
+            db_name=db_name,
             actor_user_id=actor_user_id,
             job_id=job_id,
             variant=variant,
@@ -1058,6 +1086,7 @@ async def _seed_variant_warehouse_stock(
     db: Session,
     *,
     tenant_id: str,
+    db_name: str,
     actor_user_id: str,
     job_id: str,
     variant,
@@ -1082,18 +1111,18 @@ async def _seed_variant_warehouse_stock(
         return
     for item in payloads:
         warehouse = warehouse_lookup[item["warehouse_slug"]]
-        stock = await commerce_repository.create_warehouse_stock(
-            db,
-            tenant_id=tenant_id,
+        stock = await _repo_call(
+            db_name,
+            "create_warehouse_stock",
             warehouse_id=warehouse["id"],
             variant_id=variant["id"],
             on_hand_quantity=item["on_hand_quantity"],
             reserved_quantity=0,
             low_stock_threshold=item["low_stock_threshold"],
         )
-        await commerce_repository.create_stock_ledger_entry(
-            db,
-            tenant_id=tenant_id,
+        await _repo_call(
+            db_name,
+            "create_stock_ledger_entry",
             warehouse_id=warehouse["id"],
             variant_id=variant["id"],
             entry_type="adjustment",
@@ -1105,7 +1134,11 @@ async def _seed_variant_warehouse_stock(
             notes="Imported opening inventory.",
             recorded_by_user_id=actor_user_id,
         )
-    await commerce_service._sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=[variant["id"]])
+    await commerce_service._sync_variant_inventory_from_stocks(
+        db_name,
+        tenant_id=tenant_id,
+        variant_ids=[variant["id"]],
+    )
 
 
 def _add_entity_error(report: dict[str, object], entity_key: str, message: str) -> None:

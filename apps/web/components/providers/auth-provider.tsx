@@ -2,9 +2,9 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import { getCurrentSession, login as loginRequest, type LoginPayload, type SessionDto } from "@/lib/api";
+import { getCurrentSession, login as loginRequest, magicLogin as magicLoginRequest, type LoginPayload, type SessionDto } from "@/lib/api";
 import { AUTH_STORAGE_KEY } from "@/lib/auth-storage";
-import { AuthUser, setAuthUser } from "@/lib/slices/auth/authSlice";
+import { AuthUser, setAuthUser } from "@/hook/slices/auth/authSlice";
 import { useDispatch } from "react-redux";
 
 type AuthStatus = "loading" | "authenticated" | "anonymous";
@@ -14,6 +14,7 @@ interface AuthContextValue {
   token: string | null;
   session: SessionDto | null;
   login: (payload: LoginPayload) => Promise<SessionDto>;
+  magicLogin: (userId: string) => Promise<SessionDto>;
   logout: () => void;
   refresh: () => Promise<SessionDto | null>;
 }
@@ -75,11 +76,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Restore auth user in Redux on page refresh
       const userData: AuthUser = {
-        id: nextSession.user_id ?? "",
-        name: "",
-        email: nextSession.user_id ?? "",
-        roles: nextSession.roles[0] ?? "",
-        tenant_id: nextSession.tenant_id ?? "",
+        id: nextSession.email,
+        name: nextSession.name,
+        email: nextSession.email,
+        role: nextSession.role,
+        tenant_id: nextSession.tenant_id,
         access_token: nextToken,
       };
       dispatch(setAuthUser(userData));
@@ -100,19 +101,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await loginRequest(payload);
-
+    console.log("response.session.user_id--->", response)
     const usrerdata: AuthUser = {
-      id: response.session?.user_id ?? "",
-      name: "",
-      email: response.session.user_id ?? "",
-      roles: response.session.roles[0] ?? "",
-      tenant_id: response.session.tenant_id ?? "",
-      //tenant_slug:response.session.tenant_slug??"",
+      id: response.session?.email ?? "",
+      name: response.session?.name ?? "",
+      email: response.session?.email ?? "",
+      role: response.session?.role ?? "",
+      tenant_id: response.session?.tenant_id ?? "",
       access_token: response.access_token ?? "",
       expires_at: response.expires_at ?? "",
     };
+    console.log("usrerdata", usrerdata)
     dispatch(setAuthUser(usrerdata));
     // console.log("login ",response)
+    writeStoredToken(response.access_token);
+    setToken(response.access_token);
+    setSession(response.session);
+    setStatus("authenticated");
+    return response.session;
+  }, [dispatch]);
+
+  const magicLogin = useCallback(async (userId: string) => {
+    const response = await magicLoginRequest(userId);
+
+    const userData: AuthUser = {
+      id: response.session?.email ?? "",
+      name: response.session?.name ?? "",
+      email: response.session?.email ?? "",
+      role: response.session?.role ?? "",
+      tenant_id: response.session?.tenant_id ?? "",
+      access_token: response.access_token ?? "",
+      expires_at: response.expires_at ?? "",
+    };
+    dispatch(setAuthUser(userData));
+
     writeStoredToken(response.access_token);
     setToken(response.access_token);
     setSession(response.session);
@@ -133,10 +155,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       token,
       session,
       login,
+      magicLogin,
       logout,
       refresh
     }),
-    [login, logout, refresh, session, status, token]
+    [login, magicLogin, logout, refresh, session, status, token]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

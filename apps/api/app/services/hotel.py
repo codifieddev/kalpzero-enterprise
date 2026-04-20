@@ -86,6 +86,22 @@ async def _staff_member_or_raise(db_name: str, *, tenant_id: str, staff_member_i
     return staff_member
 
 
+async def _housekeeping_or_raise(db_name: str, *, tenant_id: str, task_id: str):
+    db_name = await _db_name(tenant_id, db_name)
+    task = await hotel_repository.get_housekeeping_task(db_name, task_id=task_id)
+    if task is None:
+        raise NotFoundError(f"Housekeeping task '{task_id}' was not found.")
+    return task
+
+
+async def _maintenance_or_raise(db_name: str, *, tenant_id: str, ticket_id: str):
+    db_name = await _db_name(tenant_id, db_name)
+    ticket = await hotel_repository.get_maintenance_ticket(db_name, ticket_id=ticket_id)
+    if ticket is None:
+        raise NotFoundError(f"Maintenance ticket '{ticket_id}' was not found.")
+    return ticket
+
+
 def _serialize_property(model) -> dict[str, object]:
     return {
         "id": str(model.id),
@@ -445,12 +461,12 @@ def _outbox_reservation(db: Session, *, tenant_id: str, reservation, event_statu
     platform_repository.enqueue_outbox_event(
         db,
         tenant_id=tenant_id,
-        aggregate_id=reservation.id,
+        aggregate_id=str(reservation.id),
         event_name="hotel.reservation.updated",
         payload_json={
-            "reservation_id": reservation.id,
-            "property_id": reservation.property_id,
-            "room_id": reservation.room_id,
+            "reservation_id": str(reservation.id),
+            "property_id": str(reservation.property_id),
+            "room_id": str(reservation.room_id) if reservation.room_id else None,
             "status": event_status,
         })
 
@@ -459,12 +475,12 @@ def _outbox_invoice(db: Session, *, tenant_id: str, folio) -> None:
     platform_repository.enqueue_outbox_event(
         db,
         tenant_id=tenant_id,
-        aggregate_id=folio.id,
+        aggregate_id=str(folio.id),
         event_name="invoice.issued",
         payload_json={
-            "folio_id": folio.id,
-            "reservation_id": folio.reservation_id,
-            "property_id": folio.property_id,
+            "folio_id": str(folio.id),
+            "reservation_id": str(folio.reservation_id),
+            "property_id": str(folio.property_id),
             "invoice_number": folio.invoice_number,
             "total_minor": folio.total_minor,
             "currency": folio.currency,
@@ -524,11 +540,11 @@ def _set_room_state(room, *, occupancy_status: str | None = None, housekeeping_s
 
 
 def _booking_reference(reservation) -> str:
-    return reservation.booking_reference or f"HK-{reservation.id[:8].upper()}"
+    return reservation.booking_reference or f"HK-{str(reservation.id)[:8].upper()}"
 
 
 def _invoice_number(folio) -> str:
-    return folio.invoice_number or f"INV-{folio.id[:8].upper()}"
+    return folio.invoice_number or f"INV-{str(folio.id)[:8].upper()}"
 
 
 async def _recalculate_folio_totals(db: Session, folio, db_name: str) -> None:
@@ -545,6 +561,7 @@ async def _recalculate_folio_totals(db: Session, folio, db_name: str) -> None:
     folio.total_minor = total_minor
     folio.paid_minor = paid_minor - refunded_minor
     folio.balance_minor = total_minor - folio.paid_minor
+    await folio.save()
 
 
 def _hotel_doc_key(property_id: str) -> str:
@@ -711,9 +728,8 @@ async def create_property(db: Session, *, tenant_slug: str, db_name: str, actor_
     if await hotel_repository.find_property_by_code(db_name, code=code):
         raise ConflictError(f"Hotel property code '{code}' already exists.")
 
-    model = await hotel_repository. create_property(
-        db,
-        tenant_id=tenant_slug,
+    model = await hotel_repository.create_property(
+        db_name,
         name=name,
         code=code,
         city=city,
@@ -744,7 +760,7 @@ async def create_room_type(db: Session, *, tenant_slug: str, db_name: str, actor
         raise ConflictError(f"Hotel room type code '{code}' already exists for this property.")
 
     model = await hotel_repository.create_room_type(
-        db,
+        db_name,
         property_id=property_id,
         name=name,
         code=code,
@@ -787,7 +803,7 @@ async def create_room(db: Session, *, tenant_slug: str, db_name: str, actor_user
         housekeeping_status=housekeeping_status,
         sell_status=sell_status)
     model = await hotel_repository.create_room(
-        db,
+        db_name,
         property_id=property_id,
         room_type_id=room_type_id,
         room_number=room_number,
@@ -825,7 +841,7 @@ async def create_meal_plan(db: Session, *, tenant_slug: str, db_name: str, actor
         raise ConflictError(f"Hotel meal plan code '{code}' already exists for this property.")
 
     meal_plan = await hotel_repository.create_meal_plan(
-        db,
+        db_name,
         property_id=property_id,
         code=code,
         name=name,
@@ -857,7 +873,7 @@ async def create_guest_profile(db: Session, *, tenant_slug: str, db_name: str, a
         await _room_type_or_raise(db_name, tenant_id=tenant_slug, room_type_id=preferred_room_type_id)
 
     guest_profile = await hotel_repository.create_guest_profile(
-        db,
+        db_name,
         first_name=first_name,
         last_name=last_name,
         email=email,
@@ -887,7 +903,7 @@ async def list_guest_documents(db: Session, *, tenant_slug: str, db_name: str, g
     return [
         _serialize_guest_document(item)
         for item in await hotel_repository.list_guest_documents(
-            db,
+            db_name,
             guest_profile_id=guest_profile_id)
     ]
 
@@ -895,7 +911,7 @@ async def list_guest_documents(db: Session, *, tenant_slug: str, db_name: str, g
 async def create_guest_document(db: Session, *, tenant_slug: str, db_name: str, actor_user_id: str, guest_profile_id: str, document_kind: str, document_number: str, issuing_country: str | None, expires_on: date | None, verification_status: str, storage_key: str | None, notes: str | None) -> dict[str, object]:
     await _guest_profile_or_raise(db_name, tenant_id=tenant_slug, guest_profile_id=guest_profile_id)
     guest_document = await hotel_repository.create_guest_document(
-        db,
+        db_name,
         guest_profile_id=guest_profile_id,
         document_kind=document_kind,
         document_number=document_number,
@@ -920,7 +936,7 @@ async def list_rate_plans(db: Session, *, tenant_slug: str, db_name: str, proper
     return [
         _serialize_rate_plan(item)
         for item in await hotel_repository.list_rate_plans(
-            db,
+            db_name,
             property_id=property_id,
             room_type_id=room_type_id)
     ]
@@ -939,7 +955,7 @@ async def create_rate_plan(db: Session, *, tenant_slug: str, db_name: str, actor
             raise ConflictError("Seasonal override end date must be later than start date.")
 
     rate_plan = await hotel_repository.create_rate_plan(
-        db,
+        db_name,
         property_id=property_id,
         room_type_id=room_type_id,
         label=label,
@@ -964,7 +980,7 @@ async def list_availability_rules(db: Session, *, tenant_slug: str, db_name: str
     return [
         _serialize_availability_rule(item)
         for item in await hotel_repository.list_availability_rules(
-            db,
+            db_name,
             property_id=property_id,
             room_type_id=room_type_id)
     ]
@@ -983,7 +999,7 @@ async def create_availability_rule(db: Session, *, tenant_slug: str, db_name: st
         raise ConflictError("Availability rule already exists for this room type.")
 
     availability_rule = await hotel_repository.create_availability_rule(
-        db,
+        db_name,
         property_id=property_id,
         room_type_id=room_type_id,
         total_units=total_units,
@@ -1008,7 +1024,7 @@ async def list_reservations(db: Session, *, tenant_slug: str, db_name: str, prop
     return [
         _serialize_reservation(item)
         for item in await hotel_repository.list_reservations(
-            db,
+            db_name,
             property_id=property_id,
             status=status)
     ]
@@ -1029,8 +1045,8 @@ async def create_reservation(db: Session, *, tenant_slug: str, db_name: str, act
             raise ConflictError("Room does not match the provided property and room type.")
         if room.sell_status in {"maintenance", "blocked", "out_of_order"}:
             raise ConflictError("Room is blocked for maintenance or operational hold.")
-        if hotel_repository.find_conflicting_reservation(
-            db,
+        if await hotel_repository.find_conflicting_reservation(
+            db_name,
             room_id=room_id,
             check_in_date=check_in_date,
             check_out_date=check_out_date):
@@ -1048,11 +1064,11 @@ async def create_reservation(db: Session, *, tenant_slug: str, db_name: str, act
         resolved_guest_name = f"{guest_profile.first_name} {guest_profile.last_name}".strip()
 
     reservation = await hotel_repository.create_reservation(
-        db,
+        db_name,
         property_id=property_id,
         room_type_id=room_type_id,
         room_id=room_id,
-        meal_plan_id=meal_plan.id if meal_plan else None,
+        meal_plan_id=str(meal_plan.id) if meal_plan else None,
         booking_reference=booking_reference,
         booking_source=booking_source,
         guest_customer_id=guest_customer_id,
@@ -1070,10 +1086,11 @@ async def create_reservation(db: Session, *, tenant_slug: str, db_name: str, act
         adults=adults,
         children=children)
     reservation.booking_reference = _booking_reference(reservation)
-    folio = hotel_repository.create_folio(
-        db,
+    await reservation.save()
+    folio = await hotel_repository.create_folio(
+        db_name,
         property_id=property_id,
-        reservation_id=reservation.id,
+        reservation_id=str(reservation.id),
         guest_customer_id=guest_customer_id,
         guest_name=resolved_guest_name,
         status="open",
@@ -1087,10 +1104,10 @@ async def create_reservation(db: Session, *, tenant_slug: str, db_name: str, act
         invoice_issued_at=None,
         closed_at=None)
     if total_amount_minor > 0:
-        hotel_repository.create_folio_charge(
-            db,
-            folio_id=folio.id,
-            reservation_id=reservation.id,
+        await hotel_repository.create_folio_charge(
+            db_name,
+            folio_id=str(folio.id),
+            reservation_id=str(reservation.id),
             category="reservation_base",
             label=f"Reservation base {reservation.booking_reference}",
             service_date=check_in_date,
@@ -1123,7 +1140,7 @@ async def list_stays(db: Session, *, tenant_slug: str, db_name: str, property_id
     return [
         _serialize_stay(item)
         for item in await hotel_repository.list_stays(
-            db,
+            db_name,
             property_id=property_id,
             status=status)
     ]
@@ -1151,8 +1168,8 @@ async def record_room_move(db: Session, *, tenant_slug: str, db_name: str, actor
         raise ConflictError("Destination room is not sellable.")
     if to_room.occupancy_status != "vacant" or to_room.housekeeping_status == "dirty":
         raise ConflictError("Destination room is not ready for occupancy.")
-    if hotel_repository.find_conflicting_reservation(
-        db,
+    if await hotel_repository.find_conflicting_reservation(
+        db_name,
         room_id=to_room_id,
         check_in_date=reservation.check_in_date,
         check_out_date=reservation.check_out_date,
@@ -1160,13 +1177,13 @@ async def record_room_move(db: Session, *, tenant_slug: str, db_name: str, actor
         raise ConflictError("Destination room already has an overlapping active reservation.")
 
     moved_at = datetime.now(tz=UTC).isoformat()
-    hotel_repository.create_room_move(
-        db,
+    await hotel_repository.create_room_move(
+        db_name,
         property_id=stay.property_id,
-        stay_id=stay.id,
-        reservation_id=stay.reservation_id,
-        from_room_id=from_room.id,
-        to_room_id=to_room.id,
+        stay_id=str(stay.id),
+        reservation_id=str(stay.reservation_id),
+        from_room_id=str(from_room.id),
+        to_room_id=str(to_room.id),
         moved_at=moved_at,
         reason=reason,
         moved_by_user_id=actor_user_id)
@@ -1192,14 +1209,14 @@ async def record_room_move(db: Session, *, tenant_slug: str, db_name: str, actor
         # })
     _outbox_reservation(db, tenant_id=tenant_slug, reservation=reservation, event_status=reservation.status)
     db.commit()
-    return await get_stay_detail(db, tenant_slug=tenant_slug, stay_id=stay_id)
+    return await get_stay_detail(db, tenant_slug=tenant_slug, stay_id=stay_id, db_name=db_name)
 
 
 async def list_folios(db: Session, *, tenant_slug: str, db_name: str, property_id: str | None, reservation_id: str | None, status: str | None) -> list[dict[str, object]]:
     return [
         _serialize_folio(item)
         for item in await hotel_repository.list_folios(
-            db,
+            db_name,
             property_id=property_id,
             reservation_id=reservation_id,
             status=status)
@@ -1211,7 +1228,7 @@ async def get_folio_detail(db: Session, *, tenant_slug: str, db_name: str, folio
     charges = await hotel_repository.list_folio_charges(db_name, folio_id=folio.id)
     payments = await hotel_repository.list_payments(db_name, folio_id=folio.id)
     refunds = await hotel_repository.list_refunds(db_name, folio_id=folio.id)
-    await _recalculate_folio_totals(db, folio)
+    await _recalculate_folio_totals(db, folio, db_name)
     db.flush()
     return _serialize_folio(folio, charges=charges, payments=payments, refunds=refunds)
 
@@ -1222,10 +1239,10 @@ async def add_folio_charge(db: Session, *, tenant_slug: str, db_name: str, actor
         raise ConflictError("Cannot add charges after the folio has been invoiced.")
 
     line_amount_minor = quantity * unit_amount_minor
-    charge = hotel_repository.create_folio_charge(
-        db,
-        folio_id=folio.id,
-        reservation_id=folio.reservation_id,
+    charge = await hotel_repository.create_folio_charge(
+        db_name,
+        folio_id=str(folio.id),
+        reservation_id=str(folio.reservation_id),
         category=category,
         label=label,
         service_date=service_date,
@@ -1245,22 +1262,22 @@ async def add_folio_charge(db: Session, *, tenant_slug: str, db_name: str, actor
         # subject_id=str(charge.id),
         # metadata={"folio_id": str(folio.id), "category": category, "gross_amount_minor": line_amount_minor + tax_amount_minor})
     db.commit()
-    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id)
+    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id, db_name=db_name)
 
 
 async def record_payment(db: Session, *, tenant_slug: str, db_name: str, actor_user_id: str, folio_id: str, amount_minor: int, payment_method: str, reference: str | None, notes: str | None) -> dict[str, object]:
     folio = await _folio_or_raise(db_name, tenant_id=tenant_slug, folio_id=folio_id)
     if folio.status != "open":
         raise ConflictError("Payments can only be posted to an open folio.")
-    await _recalculate_folio_totals(db, folio)
+    await _recalculate_folio_totals(db, folio, db_name)
     if amount_minor > folio.balance_minor:
         raise ConflictError("Payment cannot exceed the current folio balance.")
 
-    payment = hotel_repository.create_payment(
-        db,
+    payment = await hotel_repository.create_payment(
+        db_name,
         property_id=folio.property_id,
-        folio_id=folio.id,
-        reservation_id=folio.reservation_id,
+        folio_id=str(folio.id),
+        reservation_id=str(folio.reservation_id),
         amount_minor=amount_minor,
         currency=folio.currency,
         payment_method=payment_method,
@@ -1279,14 +1296,14 @@ async def record_payment(db: Session, *, tenant_slug: str, db_name: str, actor_u
         # subject_id=str(payment.id),
         # metadata={"folio_id": str(folio.id), "amount_minor": amount_minor, "payment_method": payment_method})
     db.commit()
-    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id)
+    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id, db_name=db_name)
 
 
 async def list_refunds(db: Session, *, tenant_slug: str, db_name: str, property_id: str | None, folio_id: str | None) -> list[dict[str, object]]:
     return [
         _serialize_refund(item)
         for item in await hotel_repository.list_refunds(
-            db,
+            db_name,
             property_id=property_id,
             folio_id=folio_id)
     ]
@@ -1310,12 +1327,12 @@ async def record_refund(db: Session, *, tenant_slug: str, db_name: str, actor_us
     if amount_minor > refundable_balance_minor:
         raise ConflictError("Refund amount exceeds the refundable balance for this payment.")
 
-    refund = hotel_repository.create_refund(
-        db,
+    refund = await hotel_repository.create_refund(
+        db_name,
         property_id=folio.property_id,
-        folio_id=folio.id,
-        payment_id=payment.id,
-        reservation_id=folio.reservation_id,
+        folio_id=str(folio.id),
+        payment_id=str(payment.id),
+        reservation_id=str(folio.reservation_id),
         amount_minor=amount_minor,
         currency=folio.currency,
         reason=reason,
@@ -1333,13 +1350,13 @@ async def record_refund(db: Session, *, tenant_slug: str, db_name: str, actor_us
         # subject_id=str(refund.id),
         # metadata={"folio_id": str(folio.id), "payment_id": str(payment.id), "amount_minor": amount_minor})
     db.commit()
-    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id)
+    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id, db_name=db_name)
 
 
 async def close_folio(db: Session, *, tenant_slug: str, db_name: str, actor_user_id: str, folio_id: str) -> dict[str, object]:
     folio = await _folio_or_raise(db_name, tenant_id=tenant_slug, folio_id=folio_id)
     reservation = await _reservation_or_raise(db_name, tenant_id=tenant_slug, reservation_id=folio.reservation_id)
-    await _recalculate_folio_totals(db, folio)
+    await _recalculate_folio_totals(db, folio, db_name)
 
     if folio.balance_minor != 0:
         raise ConflictError("Folio cannot be closed while a balance remains.")
@@ -1357,13 +1374,13 @@ async def close_folio(db: Session, *, tenant_slug: str, db_name: str, actor_user
         # subject_id=str(folio.id),
         # metadata={"reservation_id": str(folio.reservation_id)})
     db.commit()
-    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id)
+    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id, db_name=db_name)
 
 
 async def issue_folio_invoice(db: Session, *, tenant_slug: str, db_name: str, actor_user_id: str, folio_id: str) -> dict[str, object]:
     folio = await _folio_or_raise(db_name, tenant_id=tenant_slug, folio_id=folio_id)
     reservation = await _reservation_or_raise(db_name, tenant_id=tenant_slug, reservation_id=folio.reservation_id)
-    await _recalculate_folio_totals(db, folio)
+    await _recalculate_folio_totals(db, folio, db_name)
 
     if folio.balance_minor != 0:
         raise ConflictError("Invoice cannot be issued while folio balance remains.")
@@ -1384,7 +1401,7 @@ async def issue_folio_invoice(db: Session, *, tenant_slug: str, db_name: str, ac
         # metadata={"invoice_number": folio.invoice_number, "reservation_id": str(folio.reservation_id)})
     _outbox_invoice(db, tenant_id=tenant_slug, folio=folio)
     db.commit()
-    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id)
+    return await get_folio_detail(db, tenant_slug=tenant_slug, folio_id=folio_id, db_name=db_name)
 
 
 async def list_staff_members(db: Session, *, tenant_slug: str, db_name: str, property_id: str | None) -> list[dict[str, object]]:
@@ -1396,14 +1413,14 @@ async def list_staff_members(db: Session, *, tenant_slug: str, db_name: str, pro
 
 async def create_staff_member(db: Session, *, tenant_slug: str, db_name: str, actor_user_id: str, property_id: str, staff_code: str, first_name: str, last_name: str, role: str, department: str, phone: str | None, email: str | None, employment_status: str, is_active: bool) -> dict[str, object]:
     await _property_or_raise(db_name, tenant_id=tenant_slug, property_id=property_id)
-    if hotel_repository.find_staff_member_by_code(
-        db,
+    if await hotel_repository.find_staff_member_by_code(
+        db_name,
         property_id=property_id,
         staff_code=staff_code):
         raise ConflictError(f"Hotel staff code '{staff_code}' already exists for this property.")
 
     staff_member = await hotel_repository.create_staff_member(
-        db,
+        db_name,
         property_id=property_id,
         staff_code=staff_code,
         first_name=first_name,
@@ -1430,7 +1447,7 @@ async def list_shifts(db: Session, *, tenant_slug: str, db_name: str, property_i
     return [
         _serialize_shift(item)
         for item in await hotel_repository.list_shifts(
-            db,
+            db_name,
             property_id=property_id,
             staff_member_id=staff_member_id,
             shift_date=shift_date)
@@ -1444,7 +1461,7 @@ async def create_shift(db: Session, *, tenant_slug: str, db_name: str, actor_use
         raise ConflictError("Staff member does not belong to the provided property.")
 
     shift = await hotel_repository.create_shift(
-        db,
+        db_name,
         property_id=property_id,
         staff_member_id=staff_member_id,
         shift_date=shift_date,
@@ -1469,15 +1486,15 @@ async def list_night_audits(db: Session, *, tenant_slug: str, db_name: str, prop
     return [
         _serialize_night_audit(item)
         for item in await hotel_repository.list_night_audits(
-            db,
+            db_name,
             property_id=property_id)
     ]
 
 
 async def run_night_audit(db: Session, *, tenant_slug: str, db_name: str, actor_user_id: str, property_id: str, audit_date: date) -> dict[str, object]:
     await _property_or_raise(db_name, tenant_id=tenant_slug, property_id=property_id)
-    if hotel_repository.find_night_audit_by_date(
-        db,
+    if await hotel_repository.find_night_audit_by_date(
+        db_name,
         property_id=property_id,
         audit_date=audit_date):
         raise ConflictError("Night audit already exists for this property and date.")
@@ -1557,8 +1574,8 @@ async def assign_reservation_room(db: Session, *, tenant_slug: str, db_name: str
         raise ConflictError("Assigned room does not match the reservation property and room type.")
     if room.sell_status in {"maintenance", "blocked", "out_of_order"}:
         raise ConflictError("Assigned room is not sellable.")
-    if hotel_repository.find_conflicting_reservation(
-        db,
+    if await hotel_repository.find_conflicting_reservation(
+        db_name,
         room_id=room_id,
         check_in_date=reservation.check_in_date,
         check_out_date=reservation.check_out_date,
@@ -1597,12 +1614,12 @@ async def update_reservation_status(db: Session, *, tenant_slug: str, db_name: s
         reservation.actual_check_in_at = reservation.actual_check_in_at or datetime.now(tz=UTC).isoformat()
         _set_room_state(room, occupancy_status="occupied")
         if stay is None:
-            stay = hotel_repository.create_stay(
-                db,
+            stay = await hotel_repository.create_stay(
+                db_name,
                 property_id=reservation.property_id,
-                reservation_id=reservation.id,
+                reservation_id=str(reservation.id),
                 room_type_id=reservation.room_type_id,
-                room_id=room.id,
+                room_id=str(room.id),
                 guest_customer_id=reservation.guest_customer_id,
                 guest_name=reservation.guest_name,
                 status="in_house",
@@ -1630,9 +1647,9 @@ async def update_reservation_status(db: Session, *, tenant_slug: str, db_name: s
         stay.checked_out_at = reservation.actual_check_out_at
         if not await hotel_repository.find_open_housekeeping_task(db_name, room_id=room.id):
             await hotel_repository.create_housekeeping_task(
-                db,
+                db_name,
                 property_id=reservation.property_id,
-                room_id=room.id,
+                room_id=str(room.id),
                 status="pending",
                 priority="high",
                 notes="Auto-created on checkout.",
@@ -1670,7 +1687,7 @@ async def list_housekeeping_tasks(db: Session, *, tenant_slug: str, db_name: str
     return [
         _serialize_housekeeping_task(item)
         for item in await hotel_repository.list_housekeeping_tasks(
-            db,
+            db_name,
             property_id=property_id,
             status=status)
     ]
@@ -1690,7 +1707,7 @@ async def create_housekeeping_task(db: Session, *, tenant_slug: str, db_name: st
         resolved_assigned_to = f"{staff_member.first_name} {staff_member.last_name}".strip()
 
     task = await hotel_repository.create_housekeeping_task(
-        db,
+        db_name,
         property_id=property_id,
         room_id=room_id,
         status="pending",
@@ -1739,7 +1756,7 @@ async def list_maintenance_tickets(db: Session, *, tenant_slug: str, db_name: st
     return [
         _serialize_maintenance_ticket(item)
         for item in await hotel_repository.list_maintenance_tickets(
-            db,
+            db_name,
             property_id=property_id,
             status=status)
     ]
@@ -1754,6 +1771,7 @@ async def create_maintenance_ticket(db: Session, *, tenant_slug: str, db_name: s
         if room.property_id != property_id:
             raise ConflictError("Room does not belong to the provided property.")
         _set_room_state(room, sell_status="maintenance")
+        await room.save()
     staff_member = None
     resolved_assigned_to = assigned_to
     if assigned_staff_id is not None:
@@ -1763,7 +1781,7 @@ async def create_maintenance_ticket(db: Session, *, tenant_slug: str, db_name: s
         resolved_assigned_to = f"{staff_member.first_name} {staff_member.last_name}".strip()
 
     ticket = await hotel_repository.create_maintenance_ticket(
-        db,
+        db_name,
         property_id=property_id,
         room_id=room_id,
         title=title,
@@ -1796,6 +1814,7 @@ async def update_maintenance_status(db: Session, *, tenant_slug: str, db_name: s
         ]
         if not other_open_tickets and room.sell_status == "maintenance":
             _set_room_state(room, sell_status="sellable")
+            await room.save()
 
     # _audit(
         # db,
@@ -1857,9 +1876,9 @@ async def upsert_property_profile(db: Session, store: RuntimeDocumentStore, *, t
     platform_repository.enqueue_outbox_event(
         db,
         tenant_id=tenant_slug,
-        aggregate_id=property_id,
+        aggregate_id=str(property_id),
         event_name="publishing.content.published",
-        payload_json={"page_slug": "stay", "route_path": "/stay", "property_id": property_id})
+        payload_json={"page_slug": "stay", "route_path": "/stay", "property_id": str(property_id)})
     db.commit()
     return profile_payload
 
