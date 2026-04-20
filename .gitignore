@@ -1,44 +1,69 @@
+# OS and editor files
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.run/
+*.swp
+*.swo
+*~
 
-# Dependencies
+# Node.js and package manager artifacts
 node_modules/
 .pnpm-store/
+.npm/
+.yarn/
+.yarn/cache/
+.yarn/unplugged/
+.yarn/build-state.yml
+.yarn/install-state.gz
 
-# Environment
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.venv
-
-# Testing and Linting
-.pytest_cache/
-.ruff_cache/
-coverage/
-.eslintcache
-
-# Build and IDE
-.run/
+# Build outputs and caches
 .next/
 .turbo/
 dist/
 build/
+out/
+coverage/
+htmlcov/
+.cache/
+.eslintcache
 *.tsbuildinfo
 
-# Python
+# Python artifacts
 __pycache__/
-*.pyc
-*.egg-info
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.hypothesis/
+.coverage
+.coverage.*
+.venv/
+venv/
+pip-wheel-metadata/
 
-# Logs and databases
+# Environment and secret files
+.env
+.env.*
+!.env.example
+!.env.*.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# Logs and runtime files
 *.log
+logs/
 *.pid
-*.db
+*.pid.lock
 
-scripts
-package.json
-README.md
-
-#prevent previous code
-kalpzero
+# Local machine / server tooling
+.codex
+actions-runner/
+graphify-out/
