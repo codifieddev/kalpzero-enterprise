@@ -3182,6 +3182,7 @@ async def create_shipment(db: Session, *, db_name: str, tenant_slug: str, actor_
         
         new_fulfilled_qty = order_line.get("fulfilled_quantity", 0) + line_qty
         await commerce_repository.update_order_line(db_name, line_id=order_line["id"], data={"fulfilled_quantity": new_fulfilled_qty})
+        order_line["fulfilled_quantity"] = new_fulfilled_qty
 
     if touched_variant_ids:
         await _sync_variant_inventory_from_stocks(
