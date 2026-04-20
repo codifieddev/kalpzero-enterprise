@@ -1267,7 +1267,12 @@ async def adjust_stock(db: Session, *, db_name: str, tenant_slug: str, actor_use
         reference_id=warehouse["id"],
         notes=notes,
         recorded_by_user_id=actor_user_id)
-    await _sync_variant_inventory_from_stocks(db_name, tenant_id=tenant_slug, variant_ids=[variant["id"]])
+    await _sync_variant_inventory_from_stocks(
+        db,
+        db_name=db_name,
+        tenant_id=tenant_slug,
+        variant_ids=[variant["id"]],
+    )
     await _audit(
         db, tenant_id=tenant_slug,
         actor_user_id=actor_user_id,
@@ -2067,7 +2072,7 @@ async def _reserve_order_lines_against_warehouses(db: Session, *, db_name: str, 
             reference_id=order["id"],
             notes=f"Reserved stock for order {order['id']}.",
             recorded_by_user_id=actor_user_id)
-    await _sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=variant_ids)
+    await _sync_variant_inventory_from_stocks(db, db_name=db_name, tenant_id=tenant_id, variant_ids=variant_ids)
 
 
 async def _release_order_lines_from_warehouses(db: Session, *, db_name: str, tenant_id: str, order, order_lines: list, actor_user_id: str) -> None:
@@ -2103,7 +2108,7 @@ async def _release_order_lines_from_warehouses(db: Session, *, db_name: str, ten
             notes=f"Released reserved stock for cancelled order {order['id']}.",
             recorded_by_user_id=actor_user_id)
         touched_variant_ids.append(line["variant_id"])
-    await _sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=touched_variant_ids)
+    await _sync_variant_inventory_from_stocks(db, db_name=db_name, tenant_id=tenant_id, variant_ids=touched_variant_ids)
 
 
 async def _mark_order_fulfillment_state(db: Session, *, db_name: str, tenant_id: str, order_lines: list, order) -> None:
@@ -2210,7 +2215,7 @@ async def _restock_return_inventory(db: Session, *, db_name: str, tenant_id: str
             notes=f"Restocked inventory from return {return_request.get('return_number')}.",
             recorded_by_user_id=actor_user_id)
         touched_variant_ids.append(line["variant_id"])
-    await _sync_variant_inventory_from_stocks(db, tenant_id=tenant_id, variant_ids=touched_variant_ids)
+    await _sync_variant_inventory_from_stocks(db, db_name=db_name, tenant_id=tenant_id, variant_ids=touched_variant_ids)
 
 
 async def create_order(db: Session, *, db_name: str, tenant_slug: str, actor_user_id: str, customer_id: str, price_list_id: str | None, tax_profile_id: str | None, coupon_code: str | None, status: str, currency: str, lines: list[dict[str, int | str]]) -> dict[str, object]:
@@ -3061,7 +3066,12 @@ async def create_shipment(db: Session, *, db_name: str, tenant_slug: str, actor_
         await commerce_repository.update_order_line(db_name, line_id=order_line["id"], data={"fulfilled_quantity": new_fulfilled_qty})
 
     if touched_variant_ids:
-        await _sync_variant_inventory_from_stocks(db_name, tenant_id=tenant_slug, variant_ids=touched_variant_ids)
+        await _sync_variant_inventory_from_stocks(
+            db,
+            db_name=db_name,
+            tenant_id=tenant_slug,
+            variant_ids=touched_variant_ids,
+        )
 
     shipped_at = datetime.now(tz=UTC).isoformat()
     shipment = await commerce_repository.create_shipment(db_name,

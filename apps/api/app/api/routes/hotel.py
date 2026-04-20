@@ -1089,3 +1089,67 @@ async def hotel_maintenance_tickets_update_status(
         )
     except Exception as exc:
         _raise_http_error(exc)
+
+
+router.add_api_route("/overview", hotel_overview, methods=["GET"])
+router.add_api_route("/inventory/summary", hotel_inventory_summary, methods=["GET"])
+router.add_api_route("/properties", hotel_properties, methods=["GET"])
+router.add_api_route("/properties", hotel_properties_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/room-types", hotel_room_types, methods=["GET"])
+router.add_api_route("/room-types", hotel_room_types_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/meal-plans", hotel_meal_plans, methods=["GET"])
+router.add_api_route("/meal-plans", hotel_meal_plans_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/rate-plans", hotel_rate_plans, methods=["GET"])
+router.add_api_route("/rate-plans", hotel_rate_plans_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/availability-rules", hotel_availability_rules, methods=["GET"])
+router.add_api_route("/availability-rules", hotel_availability_rules_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/rooms", hotel_rooms, methods=["GET"])
+router.add_api_route("/rooms", hotel_rooms_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/guests", hotel_guests, methods=["GET"])
+router.add_api_route("/guests", hotel_guests_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/guests/{guest_profile_id}/documents", hotel_guest_documents, methods=["GET"])
+router.add_api_route(
+    "/guests/{guest_profile_id}/documents",
+    hotel_guest_documents_create,
+    methods=["POST"],
+    status_code=status.HTTP_201_CREATED,
+)
+router.add_api_route("/reservations", hotel_reservations, methods=["GET"])
+router.add_api_route("/reservations", hotel_reservations_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/reservations/{reservation_id}/assign-room", hotel_reservations_assign_room, methods=["PATCH"])
+router.add_api_route("/reservations/{reservation_id}/status", hotel_reservations_update_status, methods=["PATCH"])
+router.add_api_route("/stays", hotel_stays, methods=["GET"])
+router.add_api_route("/stays/{stay_id}", hotel_stay_detail, methods=["GET"])
+router.add_api_route("/stays/{stay_id}/room-moves", hotel_stay_room_move, methods=["POST"])
+router.add_api_route("/folios", hotel_folios, methods=["GET"])
+router.add_api_route("/folios/{folio_id}", hotel_folio_detail, methods=["GET"])
+router.add_api_route("/folios/{folio_id}/charges", hotel_folio_charge_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/folios/{folio_id}/payments", hotel_folio_payment_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/refunds", hotel_refunds, methods=["GET"])
+router.add_api_route("/folios/{folio_id}/refunds", hotel_folio_refund_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/folios/{folio_id}/close", hotel_folio_close, methods=["POST"])
+router.add_api_route("/folios/{folio_id}/issue-invoice", hotel_folio_issue_invoice, methods=["POST"])
+router.add_api_route("/staff", hotel_staff, methods=["GET"])
+router.add_api_route("/staff", hotel_staff_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/shifts", hotel_shifts, methods=["GET"])
+router.add_api_route("/shifts", hotel_shifts_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/night-audits", hotel_night_audits, methods=["GET"])
+router.add_api_route("/night-audits", hotel_night_audits_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/property-profile", hotel_property_profile, methods=["GET"])
+router.add_api_route("/property-profile", hotel_property_profile_upsert, methods=["PUT"])
+router.add_api_route("/amenities", hotel_amenity_catalog, methods=["GET"])
+router.add_api_route("/amenities", hotel_amenity_catalog_upsert, methods=["PUT"])
+router.add_api_route("/nearby", hotel_nearby, methods=["GET"])
+router.add_api_route("/nearby", hotel_nearby_upsert, methods=["PUT"])
+router.add_api_route("/reports/summary", hotel_report_summary, methods=["GET"])
+router.add_api_route("/housekeeping/tasks", hotel_housekeeping_tasks, methods=["GET"])
+router.add_api_route("/housekeeping/tasks", hotel_housekeeping_tasks_create, methods=["POST"], status_code=status.HTTP_201_CREATED)
+router.add_api_route("/housekeeping/tasks/{task_id}/status", hotel_housekeeping_tasks_update_status, methods=["PATCH"])
+router.add_api_route("/maintenance/tickets", hotel_maintenance_tickets, methods=["GET"])
+router.add_api_route(
+    "/maintenance/tickets",
+    hotel_maintenance_tickets_create,
+    methods=["POST"],
+    status_code=status.HTTP_201_CREATED,
+)
+router.add_api_route("/maintenance/tickets/{ticket_id}/status", hotel_maintenance_tickets_update_status, methods=["PATCH"])
