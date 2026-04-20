@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             provisioningMode: 'full_tenant' as const,
         };
     }, [rootAuth.session, rootAuth.status]);
-
+  console.log("user logmmn", user)
     useEffect(() => {
         if (user) {
             const sessionRole = resolveRoleProfileForView(user.role, user.role);

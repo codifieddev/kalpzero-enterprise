@@ -112,6 +112,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
         );
     }
 
+
+    console.log("groups--",groups)
     return (
         <div className="max-w-6xl mx-auto space-y-8 mt-6 relative z-10 animate-in fade-in duration-500">
             <header className="px-2">
