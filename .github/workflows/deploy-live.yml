@@ -1,0 +1,41 @@
+name: Deploy Live
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-live
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Validate deploy path
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ -d "/mnt/data/kalpzero-enterprise" ]] || { echo "Missing deploy path /mnt/data/kalpzero-enterprise"; exit 1; }
+
+      - name: Show runner context
+        shell: bash
+        run: |
+          set -euo pipefail
+          hostname
+          whoami
+          pwd
+
+      - name: Deploy live repo
+        shell: bash
+        working-directory: /mnt/data/kalpzero-enterprise
+        env:
+          DEPLOY_BRANCH: main
+          DEPLOY_REMOTE: origin
+        run: |
+          set -euo pipefail
+          ./scripts/auto-deploy-live.sh
