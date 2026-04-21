@@ -35,6 +35,43 @@ pm2 logs kalpzero-web
 - Auto-deploy lock file:
   - `/tmp/kalpzero-auto-deploy.lock`
 
+## How To Check The Cron Job
+
+### Check that the cron entry exists
+
+```bash
+crontab -l
+```
+
+Expected line:
+
+```bash
+* * * * * /mnt/data/kalpzero-enterprise/scripts/auto-deploy-live.sh
+```
+
+### Check that the cron service itself is running
+
+```bash
+systemctl status cron
+```
+
+### Watch the cron job run every minute
+
+```bash
+tail -f /tmp/kalpzero-auto-deploy.log
+```
+
+- If new lines appear every minute, the cron job is running.
+- The timestamp should keep updating once per minute.
+- If you see `Checking origin/main for new commits`, the cron job executed successfully.
+
+### Quick one-line checks
+
+```bash
+crontab -l | grep auto-deploy-live.sh
+tail -n 20 /tmp/kalpzero-auto-deploy.log
+```
+
 ## How To Check If The Latest Commit Was Pulled
 
 ### Check the auto-deploy log
@@ -48,6 +85,11 @@ Useful log messages:
 - `No new commit detected` means the server already matches `origin/main`.
 - `New commit detected` means a newer commit was found on GitHub.
 - `Auto-deploy completed` means pull/build/restart finished successfully.
+
+Important note:
+
+- If you ran `git push origin main` from `/mnt/data/kalpzero-enterprise` itself, this folder already has the latest commit.
+- In that case the cron log will usually show `No new commit detected`, because there is nothing left to pull.
 
 ### Compare local commit with remote commit
 
