@@ -15,9 +15,15 @@ import {
   MapPin,
   Wand2,
   Globe,
+  LayoutDashboard,
+  Palette,
+  SlidersHorizontal,
+  Sparkles,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/AuthProvider';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   applyWorkspaceItemCustomization,
   mergeAdminWorkspace,
@@ -54,6 +60,19 @@ function toPluralFeedLabel(value: string, fallback: string): string {
   return `${trimmed}s`;
 }
 
+function humanizeToken(value: string | null | undefined, fallback: string): string {
+  const trimmed = value?.trim();
+  if (!trimmed) return fallback;
+  return trimmed
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+const dashboardPanelClass =
+  'rounded-xl border border-slate-800 bg-slate-900/40 backdrop-blur-md shadow-[0_16px_40px_rgba(2,6,23,0.35)]';
+const dashboardWidgetClass =
+  'rounded-2xl border border-slate-800/90 bg-slate-900/50 backdrop-blur-md overflow-hidden shadow-[0_16px_40px_rgba(2,6,23,0.35)]';
+
 export default function DashboardPage() {
   const auth = useAuth();
   const [data, setData] = useState<DashboardSummary | null>(null);
@@ -88,6 +107,23 @@ export default function DashboardPage() {
     (auth.user?.provisioningMode === 'full_tenant'
       ? 'Real-time metrics from your isolated tenant database'
       : 'Shared admin workspace with tenant-scoped metrics and modules');
+  const planLabel = humanizeToken(data?.subscriptionLevel, 'Starter');
+  const businessTypeLabel = humanizeToken(data?.businessType, 'Workspace');
+  const layoutLabel = humanizeToken(homeConfig.layout, 'Default');
+  const runtimeLabel =
+    auth.user?.provisioningMode === 'full_tenant'
+      ? 'Isolated tenant runtime'
+      : 'Shared admin runtime';
+  const enabledModulesLabel =
+    data?.enabledModules && data.enabledModules.length > 0
+      ? `${data.enabledModules.length} active modules`
+      : 'Adaptive module set';
+  const summaryPills = [
+    { label: 'Plan', value: planLabel },
+    { label: 'Business', value: businessTypeLabel },
+    { label: 'Runtime', value: runtimeLabel },
+    { label: 'Modules', value: enabledModulesLabel },
+  ];
 
   const kpis = useMemo(() => {
     if (!data) return [] as Array<KpiCard & { id: string }>;
@@ -174,13 +210,20 @@ export default function DashboardPage() {
         id: 'widget.orders',
         label: recentOrdersHeading,
         element: (
-          <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-black/20">
+          <div className={dashboardWidgetClass}>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800/90 bg-slate-950/40 px-6 py-4">
               <div className="flex items-center gap-2">
-                <Truck size={16} className="text-amber-400" />
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">{homeConfig.labelOverrides['widget.orders'] || recentOrdersHeading}</h3>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/30 bg-amber-500/10">
+                  <Truck size={16} className="text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    {homeConfig.labelOverrides['widget.orders'] || recentOrdersHeading}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Latest order activity from your workspace feed</p>
+                </div>
               </div>
-              <Link href={ordersHref} className="text-xs text-cyan-400 hover:underline">View all →</Link>
+              <Link href={ordersHref} className="text-[11px] font-semibold text-cyan-400 transition hover:text-cyan-300">View all →</Link>
             </div>
             <div className="divide-y divide-slate-800/50">
               {(data?.recentOrders || []).length === 0 ? (
@@ -211,13 +254,20 @@ export default function DashboardPage() {
         id: 'widget.posts',
         label: 'Recent Posts',
         element: (
-          <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-black/20">
+          <div className={dashboardWidgetClass}>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800/90 bg-slate-950/40 px-6 py-4">
               <div className="flex items-center gap-2">
-                <FileText size={16} className="text-emerald-400" />
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">{homeConfig.labelOverrides['widget.posts'] || 'Recent Posts'}</h3>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10">
+                  <FileText size={16} className="text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    {homeConfig.labelOverrides['widget.posts'] || 'Recent Posts'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Publishing items waiting for review or already live</p>
+                </div>
               </div>
-              <Link href="/blog" className="text-xs text-cyan-400 hover:underline">View all →</Link>
+              <Link href="/blog" className="text-[11px] font-semibold text-cyan-400 transition hover:text-cyan-300">View all →</Link>
             </div>
             <div className="divide-y divide-slate-800/50">
               {(data?.recentPosts || []).length === 0 ? (
@@ -245,13 +295,20 @@ export default function DashboardPage() {
         id: 'widget.packages',
         label: 'Recent Packages',
         element: (
-          <div className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.3)]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-black/20">
+          <div className={dashboardWidgetClass}>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800/90 bg-slate-950/40 px-6 py-4">
               <div className="flex items-center gap-2">
-                <MapPin size={16} className="text-cyan-400" />
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">{homeConfig.labelOverrides['widget.packages'] || 'Recent Packages'}</h3>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10">
+                  <MapPin size={16} className="text-cyan-400" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    {homeConfig.labelOverrides['widget.packages'] || 'Recent Packages'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Travel inventory and pricing surfaced from the latest package data</p>
+                </div>
               </div>
-              <Link href={productsHref} className="text-xs text-cyan-400 hover:underline">View all →</Link>
+              <Link href={productsHref} className="text-[11px] font-semibold text-cyan-400 transition hover:text-cyan-300">View all →</Link>
             </div>
             <div className="divide-y divide-slate-800/50">
               {(data?.recentPackages || []).length === 0 ? (
@@ -314,11 +371,11 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
-          <span className="text-slate-500 text-xs font-mono uppercase tracking-widest">Loading Workspace Analytics...</span>
-        </div>
+      <div className="flex flex-col items-center justify-center gap-4 p-20">
+        <div className="h-8 w-8 rounded-full border-2 border-cyan-500/30 border-t-cyan-500 animate-spin"></div>
+        <span className="font-mono text-xs uppercase tracking-widest text-slate-500">
+          Loading workspace analytics...
+        </span>
       </div>
     );
   }
@@ -326,67 +383,159 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className={layoutClasses.hero}>
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight text-white mb-1">
-            {pageTitle}
-          </h2>
-          <p className="text-slate-400 text-sm">
-            {pageSubtitle} •
-            <span className="ml-1 text-cyan-400 font-semibold uppercase text-xs">{data?.subscriptionLevel || 'starter'} Plan</span>
-          </p>
+        <div className={`${dashboardPanelClass} relative overflow-hidden p-6 md:p-7`}>
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(14,165,233,0.14),transparent_34%),radial-gradient(circle_at_bottom_left,rgba(168,85,247,0.12),transparent_38%)]" />
+          <div className="relative flex flex-col gap-6">
+            <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-start">
+              <div className="flex gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cyan-500/30 bg-slate-800/70 text-cyan-400 shadow-[0_0_20px_rgba(14,165,233,0.25)]">
+                  <LayoutDashboard size={22} />
+                </div>
+                <div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Badge className="border border-slate-700 bg-slate-800/80 text-[10px] uppercase tracking-widest text-slate-300">
+                      Workspace Home
+                    </Badge>
+                    <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                      Theme-ready command surface
+                    </span>
+                  </div>
+                  <h2 className="text-3xl font-bold tracking-tight text-white md:text-4xl">{pageTitle}</h2>
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400 md:text-[15px]">
+                    {pageSubtitle}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild variant="secondary">
+                  <Link href="/settings/admin-theme">
+                    <Palette size={14} />
+                    Admin Theme
+                  </Link>
+                </Button>
+                <Button asChild>
+                  <Link href="/settings/admin-workspace">
+                    <SlidersHorizontal size={14} />
+                    Workspace Customization
+                  </Link>
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {summaryPills.map((item) => (
+                <div key={item.label} className="rounded-xl border border-slate-800/80 bg-slate-950/35 px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.18em] text-slate-500">{item.label}</p>
+                  <p className="mt-2 text-sm font-semibold text-white">{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
         {homeConfig.layout !== 'default' && (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 backdrop-blur-md p-5">
-            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">
-              Home Layout
+          <div className={`${dashboardPanelClass} p-5`}>
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-violet-500/30 bg-violet-500/10 text-violet-300">
+                <Sparkles size={18} />
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+                  Home Layout
+                </div>
+                <div className="mt-1 text-sm font-semibold text-white">{layoutLabel}</div>
+              </div>
             </div>
-            <div className="mt-2 text-sm font-semibold text-white capitalize">
-              {homeConfig.layout}
-            </div>
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="text-xs leading-5 text-slate-400">
               This dashboard is using the tenant workspace layout preset saved in Workspace Customization.
             </p>
           </div>
         )}
       </div>
 
-      <div className={`grid gap-4 ${layoutClasses.quickActions}`}>
-        {quickActions.map(({ id, icon: Icon, iconClass, label, href, description }) => (
-          <Link key={id} href={href} className="bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-xl p-5 hover:border-cyan-500/40 transition-all group">
-            <div className="flex items-center gap-2 mb-2">
-              <Icon size={16} className={iconClass} />
-              <span className="text-sm font-semibold text-white">{label}</span>
-            </div>
-            <p className="text-xs text-slate-400">{description}</p>
-          </Link>
-        ))}
-      </div>
-
-      <div className={`grid gap-4 ${layoutClasses.kpis}`}>
-        {kpis.map(({ id, icon: Icon, label, value, color, href }) => {
-          const c = colorMap[color] || colorMap.cyan;
-          return (
-            <Link key={id} href={href} className={`bg-slate-900/40 backdrop-blur-md border border-slate-800 rounded-xl p-5 hover:border-slate-600 transition-all group ${c.shadow}`}>
-              <div className="flex items-center gap-3 mb-3">
-                <div className={`w-9 h-9 rounded-lg ${c.bg} border ${c.border} flex items-center justify-center ${c.text}`}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Workspace controls</p>
+            <h3 className="mt-1 text-lg font-bold text-white">Quick Actions</h3>
+          </div>
+          <p className="text-xs text-slate-500">Operational shortcuts for editing, reviewing, and publishing.</p>
+        </div>
+        <div className={`grid gap-4 ${layoutClasses.quickActions}`}>
+          {quickActions.map(({ id, icon: Icon, iconClass, label, href, description }) => (
+            <Link
+              key={id}
+              href={href}
+              className={`${dashboardPanelClass} group relative overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:border-cyan-500/40`}
+            >
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+              <div className="flex items-start justify-between gap-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-black/20 ${iconClass}`}>
                   <Icon size={18} />
                 </div>
-                <span className="text-xs text-slate-500 uppercase tracking-widest font-semibold">{label}</span>
+                <ArrowRight size={15} className="mt-1 text-slate-600 transition-colors group-hover:text-cyan-400" />
               </div>
-              <div className="flex items-end justify-between">
-                <div className="text-2xl font-black text-white">{value}</div>
-                <ArrowRight size={14} className="text-slate-600 group-hover:text-cyan-400 transition-colors" />
+              <div className="mt-4">
+                <div className="text-sm font-semibold text-white">{label}</div>
+                <p className="mt-2 text-xs leading-6 text-slate-400">{description}</p>
               </div>
             </Link>
-          );
-        })}
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Live analytics</p>
+            <h3 className="mt-1 text-lg font-bold text-white">Key Workspace Signals</h3>
+          </div>
+          <p className="text-xs text-slate-500">These cards stay aligned with the current tenant vocabulary and enabled modules.</p>
+        </div>
+        <div className={`grid gap-4 ${layoutClasses.kpis}`}>
+          {kpis.map(({ id, icon: Icon, label, value, color, href }) => {
+            const c = colorMap[color] || colorMap.cyan;
+            return (
+              <Link
+                key={id}
+                href={href}
+                className={`${dashboardPanelClass} group relative overflow-hidden p-5 transition-all hover:-translate-y-0.5 hover:border-slate-600 ${c.shadow}`}
+              >
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+                <div className="flex items-center justify-between gap-3">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-lg border ${c.border} ${c.bg} ${c.text}`}>
+                    <Icon size={18} />
+                  </div>
+                  <Badge className="border border-slate-700 bg-slate-800/80 text-[10px] uppercase tracking-widest text-slate-300">
+                    {label}
+                  </Badge>
+                </div>
+                <div className="mt-6 flex items-end justify-between gap-4">
+                  <div>
+                    <div className="text-3xl font-black tracking-tight text-white">{value}</div>
+                    <p className="mt-2 text-xs text-slate-500">Open module details and underlying records.</p>
+                  </div>
+                  <ArrowRight size={14} className="mb-1 text-slate-600 transition-colors group-hover:text-cyan-400" />
+                </div>
+              </Link>
+            );
+          })}
+        </div>
       </div>
 
       {dashboardWidgets.length > 0 && (
-        <div className={`grid gap-6 ${layoutClasses.widgets}`}>
-          {dashboardWidgets.map((widget) => (
-            <div key={widget.id}>{widget.element}</div>
-          ))}
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Operational feed</p>
+              <h3 className="mt-1 text-lg font-bold text-white">Recent Activity</h3>
+            </div>
+            <p className="text-xs text-slate-500">Orders, posts, and packages are surfaced here using the current workspace schema.</p>
+          </div>
+          <div className={`grid gap-6 ${layoutClasses.widgets}`}>
+            {dashboardWidgets.map((widget) => (
+              <div key={widget.id}>{widget.element}</div>
+            ))}
+          </div>
         </div>
       )}
     </div>
