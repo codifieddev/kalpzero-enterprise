@@ -67,3 +67,4 @@ logs/
 .codex
 actions-runner/
 graphify-out/
+/actions-runner

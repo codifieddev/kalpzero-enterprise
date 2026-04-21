@@ -1,12 +1,13 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useRef, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { setAuthUser } from '@/hook/slices/auth/authSlice';
 import { useRouter, usePathname } from 'next/navigation';
 import type { AccessContext } from '@engine/permission-engine/types';
 import { getRoleMeta, isScopedRoleView, resolveRoleProfileForView, resolveRoleSwitchCandidates, type RoleProfileKey } from '@/lib/role-scope';
 import type { AdminWorkspace } from '@/lib/admin-workspace';
+import { useAuth as useRootAuth } from '@/components/providers/auth-provider';
 
 export type MockAuthContextType = AccessContext & {
     roleRank: number;
@@ -117,8 +118,6 @@ function getRoleViewStorageKey(user: { email: string; tenantKey: string } | null
     return `kalp_role_view::${user.tenantKey}::${user.email}`.toLowerCase();
 }
 
-import { useAuth as useRootAuth } from '@/components/providers/auth-provider';
-
 // Utility to read persisted auth user from localStorage
 function readStoredAuthUser() {
     if (typeof window === 'undefined') return null;
@@ -137,10 +136,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const rootAuth = useRootAuth();
     const dispatch = useDispatch();
 
-    const [isLoading, setIsLoading] = useState(false);
     const [profileKey, setProfileKey] = useState<RoleProfileKey|null>(null);
-    const isLoggingOut = useRef(false);
-    const lastCheckedPath = useRef<string | null>(null);
+    const isLoading = rootAuth.status === 'loading';
 
     // On mount, rehydrate Redux auth state from localStorage if present (prevents flush on /settings refresh)
     useEffect(() => {
@@ -181,7 +178,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     //Route-aware redirect guard. Keeps public routes like /discover open without login.
     useEffect(() => {
         if (isLoading) return;
-        if (lastCheckedPath.current !== pathname) return; // Wait for session sync for the current path
         if (user) return;
         const isPublicPath = isAuthBypassPublicPath(pathname);
         if (pathname === '/login' || isPublicPath) return;
@@ -199,22 +195,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfileKey(resolveRoleProfileForView(user.role, newProfile));
     };
 
-    const logout = async () => {
-        isLoggingOut.current = true;
+    const logout = () => {
         rootAuth.logout();
+        setProfileKey(null);
     };
 
     // Compose the access context from the active view profile
-    const sessionRole = resolveRoleProfileForView(user?.role || 'tenant_admin', user?.role || 'tenant_admin');
+    const sessionRole = resolveRoleProfileForView(user?.role || 'viewer', user?.role || 'viewer');
     // Use profileKey if set, otherwise fallback to sessionRole
-    const effectiveProfileKey = profileKey || sessionRole;
+    const effectiveProfileKey = user ? (profileKey || sessionRole) : 'viewer';
     const roleMeta = getRoleMeta(effectiveProfileKey);
-    const availableProfiles = resolveRoleSwitchCandidates(sessionRole);
+    const availableProfiles: RoleProfileKey[] = user ? resolveRoleSwitchCandidates(sessionRole) : ['viewer'];
 
     const contextValue: MockAuthContextType = {
-        tenantId: user?.tenantKey || 'demo',
+        tenantId: user?.tenantKey || 'anonymous',
         userId: user?.email || 'anonymous',
-        roleIds: [effectiveProfileKey],
+        roleIds: user ? [effectiveProfileKey] : [],
         roleRank: roleMeta.rank,
         subscriptionLevel: user?.subscriptionLevel || 'starter',
         flags: { beta: sessionRole === 'platform_owner' },

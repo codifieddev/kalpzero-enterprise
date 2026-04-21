@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Activity, Mail, Lock, User, ArrowRight, Sparkles, ShieldCheck, Building2, Fingerprint } from 'lucide-react';
 import { useAuth } from '@/components/providers/auth-provider';
 import { getMagicOptions, type MagicUser } from '@/lib/api';
+import { resolvePostLoginRoute } from '@/lib/auth-routing';
 
 const roleModes = [
   {
@@ -57,12 +58,12 @@ export default function LoginPage() {
             const session = await login({
                 email: form.email,
                 password: form.password,
-                tenant_slug: mode === "tenant" ? form.tenantKey : undefined
+                tenant_slug: mode === "tenant" ? form.tenantKey.trim() : undefined
             });
          
             if (session?.role) {
                 startTransition(() => {
-                    router.push(session.role === "platform_owner" ? "/dashboard" : "/tenant");
+                    router.push(resolvePostLoginRoute(session.role));
                 });
             }
         } catch (submissionError) {
@@ -79,11 +80,12 @@ export default function LoginPage() {
             const session = await magicLogin(userId);
             if (session?.role) {
                 startTransition(() => {
-                    router.push(session.role === "platform_admin" ? "/platform" : "/tenant");
+                    router.push(resolvePostLoginRoute(session.role));
                 });
             }
         } catch (submissionError) {
             setError(submissionError instanceof Error ? submissionError.message : "Magic login failed.");
+        } finally {
             setLoading(false);
         }
     };
@@ -177,6 +179,28 @@ export default function LoginPage() {
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-5">
+                        <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-950/40 p-1">
+                            {roleModes.map((roleMode) => (
+                                <button
+                                    key={roleMode.key}
+                                    type="button"
+                                    onClick={() => {
+                                        setMode(roleMode.key);
+                                        setError('');
+                                    }}
+                                    className={`rounded-lg px-4 py-3 text-left transition ${
+                                        mode === roleMode.key
+                                            ? 'bg-slate-800 text-white shadow-[0_0_20px_rgba(14,165,233,0.15)]'
+                                            : 'text-slate-400 hover:bg-slate-900/70 hover:text-slate-200'
+                                    }`}
+                                >
+                                    <div className="text-xs font-bold uppercase tracking-wider">{roleMode.label}</div>
+                                    <div className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                                        {roleMode.description}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
 
                         {isRegister && (
                             <div>
@@ -226,7 +250,7 @@ export default function LoginPage() {
                             </div>
                         </div>
 
-                        {isRegister && (
+                        {mode === "tenant" && (
                             <div>
                                 <label className="block text-xs uppercase tracking-widest text-slate-500 font-semibold mb-2">Tenant Workspace</label>
                                 <div className="relative">
@@ -237,6 +261,7 @@ export default function LoginPage() {
                                         onChange={e => setForm({ ...form, tenantKey: e.target.value })}
                                         className="w-full bg-black/50 border border-slate-700/80 rounded-lg pl-10 pr-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all font-mono"
                                         placeholder="demo"
+                                        required
                                     />
                                 </div>
                             </div>

@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { resolvePostLoginRoute } from "@/lib/auth-routing";
 // import { KalpazeroHome } from "@/components/kalpazero/kalpazero-home";
 
 export default function HomePage() {
@@ -15,7 +16,7 @@ export default function HomePage() {
       return;
     }
 
-    router.replace(session?.role === "platform_admin" ? "/dashboard" : "/tenant");
+    router.replace(resolvePostLoginRoute(session?.role));
   }, [router, session?.role, status]);
 
   if (status === "loading") {

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { resolvePostLoginRoute } from "@/lib/auth-routing";
 
 const roleModes = [
   {
@@ -55,9 +56,8 @@ export function LoginForm() {
         password,
         tenant_slug: mode === "tenant" ? tenantSlug : undefined
       });
-      console.log(session)
       startTransition(() => {
-        router.push(session.role === "platform_admin" ? "/dashboard" : "/tenant");
+        router.push(resolvePostLoginRoute(session.role));
       });
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : "Unable to sign in.");

@@ -10,8 +10,6 @@ import {
     Settings, Users, Database, Globe, BarChart3, ChevronRight
 } from 'lucide-react';
 import { canRoleAccessAdminPath } from '@/lib/role-scope';
-import { useSelector } from 'react-redux';
-import { RootState } from '@/lib/store';
 
 interface ControlCenterGroup {
     title: string;
@@ -30,30 +28,25 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     const pathname = usePathname();
     const router = useRouter();
     const { currentProfile, user } = useAuth();
-  console.log("currentProfile----",currentProfile)
     // We treat "/settings" as the hub. The children prop handles actual settings page renders.
     // So if pathname === '/settings', we render the dashboard grid. Otherwise we just render children.
     const isHubView = pathname === '/settings';
     const isStandaloneSettingsPage = pathname === '/settings/export';
-    const {authUser}= useSelector((state:RootState)=>state.auth)
+    const activeRole = user?.role ? currentProfile : 'viewer';
     // Role-based visibility checks
-    const canSeeTenant = canRoleAccessAdminPath(authUser?.role??"", '/settings/tenant');
-    const canSeePlatform = canRoleAccessAdminPath(authUser?.role??"", '/settings/platform');
-    const canSeeAdminTheme = canRoleAccessAdminPath(authUser?.role??"", '/settings/admin-theme');
-    const canSeeAdminWorkspace = canRoleAccessAdminPath(authUser?.role??"", '/settings/admin-workspace');
-    const canSeeUser = canRoleAccessAdminPath(authUser?.role??"", '/settings/user');
-    const canSeeUsersList = canRoleAccessAdminPath(authUser?.role??"", '/users');
-    const canSeeTenantsList = canRoleAccessAdminPath(authUser?.role??"", '/tenants');
-    const canSeeAgenciesList = canRoleAccessAdminPath(authUser?.role??"", '/admin/agencies');
-    const canSeeAgencySettings = canRoleAccessAdminPath(authUser?.role??"", '/settings/agency');
-    const canSeeSystemRegistry = canRoleAccessAdminPath(authUser?.role??"", '/admin/registry');
-    const canSeeTenantResources = canRoleAccessAdminPath(authUser?.role??"", '/tenant/resources');
-    const canSeeAgencyResources = canRoleAccessAdminPath(authUser?.role??"", '/agency/resources');
+    const canSeeTenant = canRoleAccessAdminPath(activeRole, '/settings/tenant');
+    const canSeePlatform = canRoleAccessAdminPath(activeRole, '/settings/platform');
+    const canSeeAdminTheme = canRoleAccessAdminPath(activeRole, '/settings/admin-theme');
+    const canSeeAdminWorkspace = canRoleAccessAdminPath(activeRole, '/settings/admin-workspace');
+    const canSeeUser = canRoleAccessAdminPath(activeRole, '/settings/user');
+    const canSeeUsersList = canRoleAccessAdminPath(activeRole, '/users');
+    const canSeeTenantsList = canRoleAccessAdminPath(activeRole, '/tenants');
+    const canSeeAgenciesList = canRoleAccessAdminPath(activeRole, '/admin/agencies');
+    const canSeeAgencySettings = canRoleAccessAdminPath(activeRole, '/settings/agency');
+    const canSeeSystemRegistry = canRoleAccessAdminPath(activeRole, '/admin/registry');
+    const canSeeTenantResources = canRoleAccessAdminPath(activeRole, '/tenant/resources');
+    const canSeeAgencyResources = canRoleAccessAdminPath(activeRole, '/agency/resources');
     const hasDedicatedWorkspace = user?.provisioningMode === 'full_tenant';
-
-
-    console.log("canSeeTenant",canSeeTenant)
-    console.log("canSeePlatform",canSeePlatform)
     // Setup the groups per the PRD
     const groups: ControlCenterGroup[] = [
 
@@ -88,10 +81,10 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
     // Standard redirect handling if the user lands on a bad path directly
     useEffect(() => {
-        if (!isHubView && !canRoleAccessAdminPath(currentProfile, pathname)) {
+        if (!isHubView && !canRoleAccessAdminPath(activeRole, pathname)) {
             router.replace('/settings');
         }
-    }, [currentProfile, pathname, router, isHubView]);
+    }, [activeRole, pathname, router, isHubView]);
 
     if (isStandaloneSettingsPage) {
         return (
@@ -119,7 +112,6 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     }
 
 
-    console.log("groups--",groups)
     return (
         <div className="max-w-6xl mx-auto space-y-8 mt-6 relative z-10 animate-in fade-in duration-500">
             <header className="px-2">

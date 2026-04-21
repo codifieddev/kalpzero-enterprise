@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { getCurrentSession, login as loginRequest, magicLogin as magicLoginRequest, type LoginPayload, type SessionDto } from "@/lib/api";
 import { AUTH_STORAGE_KEY } from "@/lib/auth-storage";
-import { AuthUser, setAuthUser } from "@/hook/slices/auth/authSlice";
+import { AuthUser, clearAuth, setAuthUser } from "@/hook/slices/auth/authSlice";
 import { useDispatch } from "react-redux";
 
 type AuthStatus = "loading" | "authenticated" | "anonymous";
@@ -19,7 +19,7 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const AUTH_USER_STORAGE_KEY = "kalp_auth_user"; // ← Add this constant
+const AUTH_USER_STORAGE_KEY = "kalp_auth_user";
 
 function readStoredToken() {
   if (typeof window === "undefined") {
@@ -48,7 +48,6 @@ function writeStoredToken(token: string | null) {
   window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ token }));
 }
 
-// ← Add these functions for auth user persistence
 function readStoredAuthUser(): AuthUser | null {
   if (typeof window === "undefined") {
     return null;
@@ -84,13 +83,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     const nextToken = readStoredToken();
-    const storedAuthUser = readStoredAuthUser(); // ← Restore auth user from storage
 
     if (!nextToken) {
       setToken(null);
       setSession(null);
       setStatus("anonymous");
       writeStoredAuthUser(null);
+      dispatch(clearAuth());
       return null;
     }
 
@@ -109,23 +108,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         access_token: nextToken,
       };
       dispatch(setAuthUser(userData));
-      writeStoredAuthUser(userData); // ← Persist to storage
-
-        // Save the entire userData into session state as well
-        setSession(userData as unknown as SessionDto); // Type cast for compatibility
+      writeStoredAuthUser(userData);
 
       return nextSession;
     } catch {
       writeStoredToken(null);
-      writeStoredAuthUser(null); // ← Clear storage on error
+      writeStoredAuthUser(null);
       setToken(null);
       setSession(null);
       setStatus("anonymous");
+      dispatch(clearAuth());
       return null;
     }
   }, [dispatch]);
 
-  // ← Rehydrate Redux on mount from localStorage
   useEffect(() => {
     const storedUser = readStoredAuthUser();
     if (storedUser) {
@@ -136,8 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await loginRequest(payload);
-    console.log("response.session.user_id--->", response)
-    const usrerdata: AuthUser = {
+    const userData: AuthUser = {
       id: response.session?.email ?? "",
       name: response.session?.name ?? "",
       email: response.session?.email ?? "",
@@ -146,10 +141,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       access_token: response.access_token ?? "",
       expires_at: response.expires_at ?? "",
     };
-    console.log("usrerdata", usrerdata)
-    dispatch(setAuthUser(usrerdata));
+    dispatch(setAuthUser(userData));
     writeStoredToken(response.access_token);
-    writeStoredAuthUser(usrerdata); // ← Persist auth user to localStorage
+    writeStoredAuthUser(userData);
     setToken(response.access_token);
     setSession(response.session);
     setStatus("authenticated");
@@ -169,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
     dispatch(setAuthUser(userData));
     writeStoredToken(response.access_token);
-    writeStoredAuthUser(userData); // ← Persist auth user to localStorage
+    writeStoredAuthUser(userData);
     setToken(response.access_token);
     setSession(response.session);
     setStatus("authenticated");
@@ -178,11 +172,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(() => {
     writeStoredToken(null);
-    writeStoredAuthUser(null); // ← Clear storage on logout
+    writeStoredAuthUser(null);
     setToken(null);
     setSession(null);
     setStatus("anonymous");
-  }, []);
+    dispatch(clearAuth());
+  }, [dispatch]);
 
   const value = useMemo(
     () => ({
