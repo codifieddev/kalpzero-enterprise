@@ -522,64 +522,97 @@ class UpdateCommerceAttributeSetRequest(BaseModel):
 
 
 class CommerceAttributeValueRequest(BaseModel):
-    attribute_id: str = Field(min_length=3, max_length=36)
-    value: object | None = None
+    attributeId: str = Field(min_length=3, max_length=36)
+    value: Any | None = None
 
 
 class CreateCommerceVariantRequest(BaseModel):
     sku: str = Field(min_length=2, max_length=120)
-    label: str = Field(min_length=2, max_length=255)
-    price_minor: int = Field(ge=0)
+    title: str = Field(min_length=2, max_length=255)
+    price: float = Field(ge=0)
     currency: str = Field(default="INR", min_length=3, max_length=8)
-    inventory_quantity: int = Field(default=0, ge=0)
-    attribute_values: list[CommerceAttributeValueRequest] = Field(default_factory=list)
+    stock: int = Field(default=0, ge=0)
+    attributeValues: list[CommerceAttributeValueRequest] = Field(default_factory=list)
+    compareAtPrice: float | None = Field(default=None, ge=0)
+    imageId: str | None = Field(default=None, max_length=255)
 
 
 class CreateCommerceProductRequest(BaseModel):
     name: str = Field(min_length=2, max_length=255)
     slug: str = Field(min_length=2, max_length=120)
+    sku: str | None = Field(default=None, max_length=120)
     description: str | None = None
-    brand_id: str | None = Field(default=None, min_length=3, max_length=36)
-    vendor_id: str | None = Field(default=None, min_length=3, max_length=36)
-    collection_ids: list[str] = Field(default_factory=list)
-    attribute_set_id: str | None = Field(default=None, min_length=3, max_length=36)
-    category_ids: list[str] = Field(min_length=1)
-    seo_title: str | None = Field(default=None, max_length=255)
-    seo_description: str | None = None
+    brandId: str | None = Field(default=None, min_length=3, max_length=36)
+    vendorId: str | None = Field(default=None, min_length=3, max_length=36)
+    collectionIds: list[str] = Field(default_factory=list)
+    attributeSetIds: list[str] = Field(default_factory=list)
+    categoryIds: list[str] = Field(min_length=1)
+    seoTitle: str | None = Field(default=None, max_length=255)
+    seoDescription: str | None = None
     status: str = Field(default="active", pattern="^(draft|active|archived)$")
-    product_attributes: list[CommerceAttributeValueRequest] = Field(default_factory=list)
+    type: str = Field(default="physical", max_length=64)
+    price: float = Field(default=0.0, ge=0)
+    productAttributes: list[CommerceAttributeValueRequest] = Field(default_factory=list)
     variants: list[CreateCommerceVariantRequest] = Field(min_length=1)
 
 
 class UpdateCommerceProductRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=255)
     slug: str | None = Field(default=None, min_length=2, max_length=120)
+    sku: str | None = Field(default=None, max_length=120)
     description: str | None = None
-    brand_id: str | None = Field(default=None, min_length=3, max_length=36)
-    vendor_id: str | None = Field(default=None, min_length=3, max_length=36)
-    collection_ids: list[str] | None = None
-    attribute_set_id: str | None = Field(default=None, min_length=3, max_length=36)
-    category_ids: list[str] | None = None
-    seo_title: str | None = Field(default=None, max_length=255)
-    seo_description: str | None = None
+    brandId: str | None = Field(default=None, min_length=3, max_length=36)
+    vendorId: str | None = Field(default=None, min_length=3, max_length=36)
+    collectionIds: list[str] | None = None
+    attributeSetIds: list[str] | None = None
+    categoryIds: list[str] | None = None
+    seoTitle: str | None = Field(default=None, max_length=255)
+    seoDescription: str | None = None
     status: str | None = Field(default=None, pattern="^(draft|active|archived)$")
-    product_attributes: list[CommerceAttributeValueRequest] | None = None
+    type: str | None = Field(default=None, max_length=64)
+    price: float | None = Field(default=None, ge=0)
+    productAttributes: list[CommerceAttributeValueRequest] | None = None
     variants: list[CreateCommerceVariantRequest] | None = None
 
 
-class CreateCommerceOrderLineRequest(BaseModel):
-    variant_id: str = Field(min_length=3, max_length=36)
-    quantity: int = Field(ge=1)
+class OrderAddressRequest(BaseModel):
+    firstName: str
+    lastName: str
+    email: str
+    phone: str
+    addressLine1: str
+    addressLine2: str | None = None
+    city: str
+    state: str
+    zipCode: str
+    country: str
 
+class OrderPricingRequest(BaseModel):
+    subtotal: float
+    shipping: float
+    discount: float
+    tax: float
+    total: float
+
+class OrderPaymentRequest(BaseModel):
+    method: str
+
+class OrderShippingRequest(BaseModel):
+    method: str
 
 class CreateCommerceOrderRequest(BaseModel):
-    customer_id: str = Field(min_length=2, max_length=120)
-    price_list_id: str | None = Field(default=None, min_length=3, max_length=36)
-    tax_profile_id: str | None = Field(default=None, min_length=3, max_length=36)
-    coupon_code: str | None = Field(default=None, min_length=2, max_length=120)
-    status: str = Field(default="placed", pattern="^(draft|placed|paid|fulfilled)$")
-    currency: str = Field(default="INR", min_length=3, max_length=8)
-    lines: list[CreateCommerceOrderLineRequest] = Field(min_length=1)
+    items: list[dict[str, Any]]
+    pricing: OrderPricingRequest
+    shippingAddress: OrderAddressRequest
+    billingAddress: OrderAddressRequest
+    payment: OrderPaymentRequest
+    shipping: OrderShippingRequest
+    email: str
+    sessionId: str | None = None
+    userId: str | None = None
+    status: str = "pending"
+    paymentStatus: str = "pending"
+    fulfillmentStatus: str = "unfulfilled"
 
 
 class CommerceOrderStatusRequest(BaseModel):
@@ -816,3 +849,37 @@ class LoginCustomerRequest(BaseModel):
     tenant_slug: str = Field(min_length=3, max_length=120)
     email: str = Field(min_length=3, max_length=255)
     password: str = Field(min_length=10)
+
+class ButtonsRequest(BaseModel):
+    primary: str = Field(min_length=4, max_length=32)
+    primaryText: str = Field(min_length=4, max_length=32)
+    secondary: str = Field(min_length=4, max_length=32)
+    secondaryText: str = Field(min_length=4, max_length=32)
+
+class ThemeColorsRequest(BaseModel):
+    primary: str = Field(min_length=4, max_length=32)
+    secondary: str = Field(min_length=4, max_length=32)
+    accent: str = Field(min_length=4, max_length=32)
+    surface: str = Field(min_length=4, max_length=32)
+    background: str = Field(min_length=4, max_length=32)
+    text: str = Field(min_length=4, max_length=32)
+    buttons: ButtonsRequest
+
+class FontRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=2, max_length=120)
+    url: str = Field(min_length=1, max_length=255)
+    weight: str = Field(min_length=1, max_length=120)
+    style: str = Field(min_length=1, max_length=120)
+
+class ThemeTypographyRequest(BaseModel):
+    bodyFont: str = Field(min_length=2, max_length=120)
+    headingFont: str = Field(min_length=2, max_length=120)
+    customFonts: list[FontRequest] = Field(default_factory=list)
+
+class ThemeConfig(BaseModel):
+    colors: ThemeColorsRequest
+    typography: ThemeTypographyRequest
+    
+    
+    

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 import asyncio
 import yaml
+import pytz
 from collections import defaultdict
 from sqlalchemy.orm import Session
 
@@ -379,17 +380,21 @@ def _serialize_attribute_set(model) -> dict[str, object]:
 
 def _serialize_variant(model) -> dict[str, object]:
     created_at = _value(model, "created_at", "createdAt")
+    updated_at = _value(model, "updated_at", "updatedAt")
     return {
         "id": str(model["id"]),
-        "product_id": str(_value(model, "product_id", "productId")),
+        "productId": str(_value(model, "productId", "product_id")),
         "sku": model["sku"],
-        "label": _value(model, "label", "title"),
-        "price_minor": _value(model, "price_minor", "price", default=0),
-        "currency": model.get("currency"),
-        "inventory_quantity": _value(model, "inventory_quantity", "stock", default=0),
-        "attribute_values": model.get("attribute_values", []),
+        "title": _value(model, "title", "label"),
+        "price": _value(model, "price", "price_minor", default=0.0),
+        "currency": model.get("currency", "INR"),
+        "stock": _value(model, "stock", "inventory_quantity", default=0),
+        "attributeValues": model.get("attributeValues", model.get("attribute_values", [])),
+        "compareAtPrice": model.get("compareAtPrice"),
+        "imageId": model.get("imageId"),
         "status": model.get("status", "active"),
-        "created_at": _iso(created_at),
+        "createdAt": _iso(created_at),
+        "updatedAt": _iso(updated_at),
     }
 
 
@@ -400,21 +405,32 @@ def _serialize_product(model, variants_by_product: dict[str, list[dict[str, obje
         "id": p_id,
         "name": model["name"],
         "slug": model["slug"],
+        "sku": model.get("sku"),
         "description": model.get("description"),
-        "brand_id": str(model["brand_id"]) if model.get("brand_id") else None,
-        "vendor_id": str(model["vendor_id"]) if model.get("vendor_id") else None,
-        "collection_ids": [str(item) for item in model.get("collection_ids", [])],
-        "attribute_set_id": str(model["attribute_set_id"]) if model.get("attribute_set_id") else None,
-        "category_ids": [str(item) for item in model.get("category_ids", [])],
-        "seo_title": model.get("seo_title"),
-        "seo_description": model.get("seo_description"),
         "status": model["status"],
-        "product_attributes": model.get("product_attributes", []),
+        "type": model.get("type", "physical"),
+        "categoryIds": [str(item) for item in model.get("categoryIds", model.get("category_ids", []))],
+        "attributeSetIds": [str(item) for item in model.get("attributeSetIds", model.get("attribute_set_id", []))],
+        "pricing": model.get("pricing", {}),
+        "options": model.get("options", []),
+        "gallery": model.get("gallery", []),
+        "primaryImageId": model.get("primaryImageId"),
+        "primaryCategoryId": model.get("primaryCategoryId"),
+        "relatedProductIds": [str(item) for item in model.get("relatedProductIds", [])],
+        "templateKey": model.get("templateKey"),
+        "formId": model.get("formId"),
+        "price": model.get("price", 0.0),
+        "brandId": str(model["brandId"]) if model.get("brandId") else (str(model["brand_id"]) if model.get("brand_id") else None),
+        "vendorId": str(model["vendorId"]) if model.get("vendorId") else (str(model["vendor_id"]) if model.get("vendor_id") else None),
+        "collectionIds": [str(item) for item in model.get("collectionIds", model.get("collection_ids", []))],
+        "seoTitle": model.get("seoTitle", model.get("seo_title")),
+        "seoDescription": model.get("seoDescription", model.get("seo_description")),
+        "productAttributes": model.get("productAttributes", model.get("product_attributes", [])),
         "variants": product_variants,
         "createdAt": (
             model["createdAt"].isoformat()
-            if model["createdAt"] and hasattr(model["createdAt"], "isoformat")
-            else model["createdAt"]
+            if model.get("createdAt") and hasattr(model["createdAt"], "isoformat")
+            else model.get("createdAt")
         ),
         "updatedAt": (
             model.get("updatedAt").isoformat()
@@ -479,33 +495,24 @@ def _serialize_shipment(model) -> dict[str, object]:
     }
 
 
-def _serialize_order(model, lines_by_order: dict[str, list[dict[str, object]]], *, payments: list | None = None, refunds: list | None = None, invoices: list | None = None, returns: list | None = None) -> dict[str, object]:
+def _serialize_order(model) -> dict[str, Any]:
     return {
         "id": str(model["id"]),
-                "customer_id": str(model["customer_id"]),
-        "price_list_id": str(model.get("price_list_id")) if model.get("price_list_id") else None,
-        "tax_profile_id": str(model.get("tax_profile_id")) if model.get("tax_profile_id") else None,
-        "coupon_code": model.get("coupon_code"),
-        "status": model["status"],
-        "currency": model["currency"],
-        "subtotal_minor": model["subtotal_minor"],
-        "discount_minor": model.get("discount_minor", 0),
-        "tax_minor": model.get("tax_minor", 0),
-        "total_minor": model["total_minor"],
-        "payment_status": model.get("payment_status", "pending"),
-        "paid_minor": model.get("paid_minor", 0),
-        "refunded_minor": model.get("refunded_minor", 0),
-        "balance_minor": model.get("balance_minor", 0),
-        "invoice_number": model.get("invoice_number"),
-        "invoice_issued_at": model.get("invoice_issued_at"),
-        "inventory_reserved": model.get("inventory_reserved", False),
-        "placed_at": model.get("placed_at"),
-        "lines": lines_by_order.get(str(model["id"]), []),
-        "payments": [_serialize_payment(item) for item in payments] if payments is not None else None,
-        "refunds": [_serialize_refund(item) for item in refunds] if refunds is not None else None,
-        "invoices": [_serialize_invoice(item) for item in invoices] if invoices is not None else None,
-        "returns": returns,
-        "created_at": model["created_at"].isoformat() if hasattr(model["created_at"], "isoformat") else model["created_at"],
+        "items": model.get("items", []),
+        "pricing": model.get("pricing", {}),
+        "shippingAddress": model.get("shippingAddress", {}),
+        "billingAddress": model.get("billingAddress", {}),
+        "payment": model.get("payment", {}),
+        "shipping": model.get("shipping", {}),
+        "sessionId": model.get("sessionId"),
+        "email": model.get("email", ""),
+        "userId": model.get("userId"),
+        "orderNumber": model.get("orderNumber"),
+        "status": model.get("status", "pending"),
+        "paymentStatus": model.get("paymentStatus", "pending"),
+        "fulfillmentStatus": model.get("fulfillmentStatus", "unfulfilled"),
+        "createdAt": _iso(model.get("createdAt")),
+        "updatedAt": _iso(model.get("updatedAt")),
     }
 
 
@@ -1749,17 +1756,34 @@ async def delete_product(db: Session, *, db_name: str, tenant_slug: str, actor_u
     return success
 
 
-async def list_orders(db: Session, *, tenant_slug: str, db_name: str) -> list[dict[str, object]]:
-    orders = await commerce_repository.list_orders(db_name)
-    if not orders:
-        return []
-
-    lines = await commerce_repository.list_order_lines_for_orders(db_name,
-        order_ids=[order["id"] for order in orders])
-    lines_by_order: dict[str, list[dict[str, object]]] = defaultdict(list)
-    for line in lines:
-        lines_by_order[line["order_id"]].append(_serialize_order_line(line))
-    return [_serialize_order(order, lines_by_order) for order in orders]
+async def list_orders(
+    db: Session,
+    *,
+    tenant_slug: str,
+    db_name: str,
+    search: str | None = None,
+    page: int = 1,
+    per_page: int = 50
+) -> dict[str, Any]:
+    query = {}
+    if search:
+        query["$or"] = [
+            {"orderNumber": {"$regex": search, "$options": "i"}},
+            {"email": {"$regex": search, "$options": "i"}},
+            {"shippingAddress.firstName": {"$regex": search, "$options": "i"}},
+            {"shippingAddress.lastName": {"$regex": search, "$options": "i"}},
+        ]
+    
+    skip = (page - 1) * per_page
+    total = await commerce_repository.count_orders(db_name, query)
+    orders = await commerce_repository.list_orders(db_name, query, skip=skip, limit=per_page)
+    
+    return {
+        "data": [_serialize_order(order) for order in orders],
+        "total": total,
+        "page": page,
+        "per_page": per_page
+    }
 
 
 async def list_fulfillments(db: Session, *, tenant_slug: str, db_name: str, order_id: str | None) -> list[dict[str, object]]:
@@ -2141,200 +2165,28 @@ async def _restock_return_inventory(db_name: str, *, tenant_id: str, return_requ
     )
 
 
-async def create_order(db: Session, *, db_name: str, tenant_slug: str, actor_user_id: str, customer_id: str, price_list_id: str | None, tax_profile_id: str | None, coupon_code: str | None, status: str, currency: str, lines: list[dict[str, int | str]]) -> dict[str, object]:
-    normalized_currency = currency.strip().upper()
-    variant_models_by_id: dict[str, Any] = {}
-    product_models_by_id: dict[str, Any] = {}
-    line_payloads: list[tuple[Any, int]] = []
-    quantities: dict[str, int] = {}
-    subtotal_minor = 0
-
-    # Parallelize initial base entities
-    price_list_task = commerce_repository.get_price_list(db_name, price_list_id=price_list_id) if price_list_id else asyncio.sleep(0, result=None)
-    tax_profile_task = commerce_repository.get_tax_profile(db_name, tax_profile_id=tax_profile_id) if tax_profile_id else asyncio.sleep(0, result=None)
+async def create_order(db: Session, *, db_name: str, tenant_slug: str, actor_user_id: str | None, payload: dict[str, Any]) -> dict[str, Any]:
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
+    date_str = now.strftime("%Y%m%d")
     
-    normalized_coupon_code = coupon_code.strip().upper() if coupon_code else None
-    coupon_task = commerce_repository.find_coupon_by_code(db_name, code=normalized_coupon_code) if normalized_coupon_code else asyncio.sleep(0, result=None)
-
-    price_list, tax_profile, coupon = await asyncio.gather(price_list_task, tax_profile_task, coupon_task)
-
-    if price_list_id:
-        if price_list is None:
-            raise NotFoundError(f"Price list '{price_list_id}' was not found.")
-        if price_list.get("status") != "active":
-            raise ValidationError("Only active price lists can be used for order pricing.")
-        if price_list.get("currency") != normalized_currency:
-            raise ValidationError("Order currency must match the selected price list currency.")
-
-    if tax_profile_id:
-        if tax_profile is None:
-            raise NotFoundError(f"Tax profile '{tax_profile_id}' was not found.")
-        if tax_profile.get("status") != "active":
-            raise ValidationError("Only active tax profiles can be used for order pricing.")
-
-    if normalized_coupon_code:
-        if coupon is None:
-            raise NotFoundError(f"Coupon '{normalized_coupon_code}' was not found.")
-        if coupon.get("status") != "active":
-            raise ValidationError("Only active coupons can be applied to orders.")
-
-    # Parallelize variants lookup
-    variant_ids = [str(line["variant_id"]) for line in lines]
-    variant_results = await asyncio.gather(*[
-        commerce_repository.get_variant(db_name, variant_id=vid)
-        for vid in variant_ids
-    ])
-
-    # Map results and prepare for product lookup
-    for index, (line, variant) in enumerate(zip(lines, variant_results)):
-        if variant is None:
-            raise NotFoundError(f"Variant '{line['variant_id']}' was not found.")
-        if variant.get("currency") != normalized_currency:
-            raise ValidationError("Order currency must match the selected variant currency.")
-        quantity = int(line["quantity"])
-        if quantity <= 0:
-            raise ConflictError("Order quantities must be positive.")
-        variant_models_by_id[variant["id"]] = variant
-        quantities[variant["id"]] = quantities.get(variant["id"], 0) + quantity
-        line_payloads.append((variant, quantity))
-
-    # Parallelize product lookups
-    product_ids = list({v["product_id"] for v in variant_models_by_id.values()})
-    product_results = await asyncio.gather(*[
-        commerce_repository.get_product(db_name, product_id=pid)
-        for pid in product_ids
-    ])
-    product_models_by_id = {product["id"]: product for product in product_results if product}
-
-    price_list_item_lookup: dict[str, Any] = {}
-    if price_list:
-        price_list_items = await commerce_repository.list_price_list_items_for_variants(db_name,
-            price_list_id=price_list["id"],
-            variant_ids=list(variant_models_by_id.keys()))
-        price_list_item_lookup = {item["variant_id"]: item for item in price_list_items}
-
-    priced_line_payloads: list[tuple[Any, Any, int, int, int]] = []
-    for variant, quantity in line_payloads:
-        product = product_models_by_id.get(variant["product_id"])
-        if product is None:
-             raise NotFoundError(f"Product '{variant['product_id']}' was not found for variant '{variant['id']}'.")
-             
-        if variant["id"] in price_list_item_lookup:
-            unit_price_minor = price_list_item_lookup[variant["id"]].get("price_minor", 0)
-        else:
-            unit_price_minor = variant.get("price_minor", 0)
-        line_total_minor = unit_price_minor * quantity
-        priced_line_payloads.append((product, variant, quantity, unit_price_minor, line_total_minor))
-        subtotal_minor += line_total_minor
-
-    discount_minor = 0
-    if coupon:
-        if subtotal_minor < coupon.get("minimum_subtotal_minor", 0):
-            raise ValidationError("Order subtotal does not meet the coupon minimum.")
-        eligible_subtotal_minor = 0
-        category_scope = set(coupon.get("applicable_category_ids") or [])
-        variant_scope = set(coupon.get("applicable_variant_ids") or [])
-        for product, variant, _quantity, _unit_price_minor, line_total_minor in priced_line_payloads:
-            category_match = bool(category_scope.intersection(product.get("category_ids", [])))
-            variant_match = variant["id"] in variant_scope
-            if not category_scope and not variant_scope:
-                eligible_subtotal_minor += line_total_minor
-            elif category_match or variant_match:
-                eligible_subtotal_minor += line_total_minor
-        if eligible_subtotal_minor <= 0:
-            raise ValidationError("Coupon does not apply to the selected order lines.")
-        if coupon.get("discount_type") == "fixed":
-            discount_minor = min(coupon.get("discount_value", 0), eligible_subtotal_minor)
-        else:
-            discount_minor = (eligible_subtotal_minor * coupon.get("discount_value", 0)) // 10000
-        if coupon.get("maximum_discount_minor") is not None:
-            discount_minor = min(discount_minor, coupon["maximum_discount_minor"])
-        discount_minor = min(discount_minor, subtotal_minor)
-
-    taxable_minor = max(subtotal_minor - discount_minor, 0)
-    tax_minor = 0
-    total_minor = taxable_minor
-    if tax_profile:
-        total_tax_basis_points = _total_tax_basis_points(tax_profile)
-        if tax_profile.get("prices_include_tax"):
-            denominator = 10000 + total_tax_basis_points
-            tax_minor = (taxable_minor * total_tax_basis_points) // denominator if denominator else 0
-            total_minor = taxable_minor
-        else:
-            tax_minor = (taxable_minor * total_tax_basis_points) // 10000
-            total_minor = taxable_minor + tax_minor
-
-    variant_models = list(variant_models_by_id.values())
-    inventory_reserved = status in {"placed", "paid", "fulfilled"}
-    placed_at = datetime.now(tz=UTC).isoformat() if status in {"placed", "paid", "fulfilled"} else None
-    order = await commerce_repository.create_order(db_name,
-        customer_id=customer_id,
-        price_list_id=price_list["id"] if price_list is not None else None,
-        tax_profile_id=tax_profile["id"] if tax_profile is not None else None,
-        coupon_code=normalized_coupon_code,
-        status=status,
-        currency=normalized_currency,
-        subtotal_minor=subtotal_minor,
-        discount_minor=discount_minor,
-        tax_minor=tax_minor,
-        total_minor=total_minor,
-        payment_status="pending",
-        paid_minor=0,
-        refunded_minor=0,
-        balance_minor=total_minor,
-        invoice_number=None,
-        invoice_issued_at=None,
-        inventory_reserved=inventory_reserved,
-        placed_at=placed_at)
-
-    created_lines = []
-    for _product, variant, quantity, unit_price_minor, line_total_minor in priced_line_payloads:
-        line = await commerce_repository.create_order_line(db_name,
-            order_id=order["id"],
-            product_id=variant["product_id"],
-            variant_id=variant["id"],
-            allocated_warehouse_id=None,
-            quantity=quantity,
-            fulfilled_quantity=0,
-            unit_price_minor=unit_price_minor,
-            line_total_minor=line_total_minor)
-        created_lines.append(line)
-
-    if inventory_reserved:
-        warehouse_stocks = await commerce_repository.list_warehouse_stocks_for_variants(db_name, variant_ids=list(variant_models_by_id.keys()))
-        if warehouse_stocks:
-            await _reserve_order_lines_against_warehouses(
-                db_name, tenant_id=tenant_slug,
-                order=order,
-                order_lines=created_lines,
-                actor_user_id=actor_user_id)
-        else:
-            await _reserve_inventory(
-                db_name,
-                tenant_id=tenant_slug,
-                variants=variant_models,
-                quantities=quantities,
-            )
-
-    # await _audit(
-        # db, tenant_id=tenant_slug,
-        # actor_user_id=actor_user_id,
-        # action="commerce.order.created",
-        # subject_type="commerce_order",
-        # subject_id=str(order["id"]),
-        # metadata={
-            # "customer_id": str(customer_id),
-            # "status": status,
-            # "subtotal_minor": subtotal_minor,
-            # "discount_minor": discount_minor,
-            # "tax_minor": tax_minor,
-            # "total_minor": total_minor,
-        # })
-    await _outbox_order(db, db_name=db_name, tenant_id=tenant_slug, order=order)
+    order_count = await commerce_repository.get_todays_orders_count(db_name)
+    order_number = f"ORD-{date_str}-{(order_count + 1):04d}"
+    
+    order_doc = {
+        **payload,
+        "orderNumber": order_number,
+        "status": payload.get("status", "pending"),
+        "paymentStatus": payload.get("paymentStatus", "pending"),
+        "fulfillmentStatus": payload.get("fulfillmentStatus", "unfulfilled"),
+        "userId": actor_user_id or payload.get("userId"),
+        "createdAt": now,
+        "updatedAt": now
+    }
+    
+    order = await commerce_repository.create_order(db_name, order_doc)
     db.commit()
-    
-    fresh_lines = await commerce_repository.list_order_lines_for_orders(db_name, order_ids=[order["id"]])
-    return _serialize_order(order, {order["id"]: [_serialize_order_line(line) for line in fresh_lines]})
+    return _serialize_order(order)
 
 
 async def record_payment(db: Session, *, db_name: str, tenant_slug: str, actor_user_id: str, order_id: str, amount_minor: int, provider: str | None, payment_method: str, status: str, reference: str | None, notes: str | None) -> dict[str, object]:

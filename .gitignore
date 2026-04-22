@@ -68,3 +68,6 @@ logs/
 actions-runner/
 graphify-out/
 /actions-runner
+/scripts
+README.md
+package.json

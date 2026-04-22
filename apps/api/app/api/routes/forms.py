@@ -5,24 +5,24 @@ from app.services import forms as forms_service
 
 router = APIRouter()
 
-@router.get("/")
+@router.get("")
 async def list_forms(
     session: SessionContext = Depends(get_current_session)
 ):
     db_name = session.tenant_db_name or "default"
     forms = await forms_service.list_forms(db_name)
-    return {"data": forms}
+    return {"data": forms, "success": True}
 
-@router.post("/")
+@router.post("")
 async def create_form(
     payload: CreateFormRequest,
     session: SessionContext = Depends(get_current_session)
 ):
     db_name = session.tenant_db_name or "default"
     form = await forms_service.create_form(db_name, payload.model_dump())
-    return {"data": form}
+    return {"data": form, "success": True}
 
-@router.put("/")
+@router.put("")
 async def update_form(
     payload: UpdateFormRequest,
     id: str = Query(..., description="The ID of the form to update"),
@@ -37,9 +37,9 @@ async def update_form(
             detail="FORM NOT FOUND"
         )
         
-    return {"data": form}
+    return {"data": form, "success": True}
 
-@router.delete("/")
+@router.delete("")
 async def delete_form(
     id: str = Query(..., description="The ID of the form to delete"),
     session: SessionContext = Depends(get_current_session)
@@ -53,4 +53,4 @@ async def delete_form(
             detail="FORM NOT FOUND"
         )
         
-    return {"message": "FORM DELETED SUCCESSFULLY"}
+    return {"message": "FORM DELETED SUCCESSFULLY", "success": True, "data": id}
