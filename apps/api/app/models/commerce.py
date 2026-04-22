@@ -72,27 +72,41 @@ class CommerceAttributeSet(TimestampDocument):
 class CommerceProduct(TimestampDocument):
     name: str
     slug: str
+    sku: Optional[str] = None
     description: Optional[str] = None
-    brand_id: Optional[str] = None
-    vendor_id: Optional[str] = None
-    collection_ids: list[str] = []
-    attribute_set_id: Optional[str] = None
-    category_ids: list[str] = []
-    seo_title: Optional[str] = None
-    seo_description: Optional[str] = None
     status: str = "active"
+    type: str = "physical"
+    categoryIds: list[str] = []
+    attributeSetIds: list[str] = []
+    pricing: dict[str, Any] = {}
+    options: list[dict[str, Any]] = []
+    gallery: list[str] = []
+    primaryImageId: Optional[str] = None
+    primaryCategoryId: Optional[str] = None
+    relatedProductIds: list[str] = []
+    templateKey: Optional[str] = None
+    formId: Optional[str] = None
+    price: float = 0.0
+    brandId: Optional[str] = None
+    vendorId: Optional[str] = None
+    collectionIds: list[str] = []
+    seoTitle: Optional[str] = None
+    seoDescription: Optional[str] = None
 
     class Settings:
         name = "commerce_products"
 
 
 class CommerceVariant(TimestampDocument):
-    product_id: str
+    productId: str
     sku: str
-    label: str
-    price_minor: int
+    title: str
+    price: float = 0.0
+    stock: int = 0
+    compareAtPrice: Optional[float] = None
+    imageId: Optional[str] = None
+    status: str = "active"
     currency: str = "INR"
-    inventory_quantity: int = 0
 
     class Settings:
         name = "commerce_variants"

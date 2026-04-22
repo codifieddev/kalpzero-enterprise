@@ -1022,11 +1022,17 @@ async def list_products(
     if search:
         query["name"] = {"$regex": search, "$options": "i"}
     if category and category != "all":
-        query["category_ids"] = category
+        query["categoryIds"] = {"$in": [category]}
     if status:
         query["status"] = status
+
+    
     total = await db["commerce_products"].count_documents(query)
+
+
+    
     cursor = db["commerce_products"].find(query).sort("created_at", -1).skip(skip).limit(limit)
+
     products = await cursor.to_list(length=limit)
     return _map_ids(products), total
 
@@ -1041,34 +1047,34 @@ async def find_product_by_slug(db_name: str, *, slug: str) -> dict[str, Any] | N
     return _map_id(doc)
 
 
-async def create_product(
-    db_name: str,
-    data: dict[str, Any] | None = None,
-    **kwargs: Any,
-) -> dict[str, Any]:
-    db = get_runtime_motor_database(get_settings(), database_name=db_name)
-    payload = dict(data or {})
-    payload.update(kwargs)
-    product_id = str(payload.pop("id", None) or uuid4())
-    doc = {
-        "_id": product_id,
-        "name": payload["name"],
-        "slug": payload["slug"],
-        "description": payload.get("description"),
-        "brand_id": payload.get("brand_id"),
-        "vendor_id": payload.get("vendor_id"),
-        "collection_ids": list(payload.get("collection_ids", [])),
-        "attribute_set_id": payload.get("attribute_set_id"),
-        "category_ids": list(payload.get("category_ids", [])),
-        "seo_title": payload.get("seo_title"),
-        "seo_description": payload.get("seo_description"),
-        "status": payload.get("status", "active"),
-        "product_attributes": list(payload.get("product_attributes", [])),
-        "created_at": datetime.now(tz=UTC),
-        "updated_at": datetime.now(tz=UTC),
-    }
-    await db["commerce_products"].insert_one(doc)
-    return _map_id(doc)
+# async def create_product(
+#     db_name: str,
+#     data: dict[str, Any] | None = None,
+#     **kwargs: Any,
+# ) -> dict[str, Any]:
+#     db = get_runtime_motor_database(get_settings(), database_name=db_name)
+#     payload = dict(data or {})
+#     payload.update(kwargs)
+#     product_id = str(payload.pop("id", None) or uuid4())
+#     doc = {
+#         "_id": product_id,
+#         "name": payload["name"],
+#         "slug": payload["slug"],
+#         "description": payload.get("description"),
+#         "brand_id": payload.get("brand_id"),
+#         "vendor_id": payload.get("vendor_id"),
+#         "collection_ids": list(payload.get("collection_ids", [])),
+#         "attribute_set_id": payload.get("attribute_set_id"),
+#         "category_ids": list(payload.get("category_ids", [])),
+#         "seo_title": payload.get("seo_title"),
+#         "seo_description": payload.get("seo_description"),
+#         "status": payload.get("status", "active"),
+#         "product_attributes": list(payload.get("product_attributes", [])),
+#         "created_at": datetime.now(tz=UTC),
+#         "updated_at": datetime.now(tz=UTC),
+#     }
+#     await db["commerce_products"].insert_one(doc)
+#     return _map_id(doc)
 
 
 async def update_product(db_name: str, product_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
@@ -1168,14 +1174,26 @@ async def update_warehouse_stock(db_name: str, *, stock_id: str, data: dict[str,
     return await _update_by_id(db_name, "commerce_warehouse_stocks", document_id=stock_id, data=data)
 
 
-async def list_orders(db_name: str) -> list[dict[str, Any]]:
+async def count_orders(db_name: str, query: dict[str, Any] = {}) -> int:
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
-    cursor = db["commerce_orders"].find().sort("created_at", -1)
-    return _map_ids(await cursor.to_list(length=1000))
+    return await db["commerce_orders"].count_documents(query)
 
+async def list_orders(db_name: str, query: dict[str, Any] = {}, skip: int = 0, limit: int = 50) -> list[dict[str, Any]]:
+    db = get_runtime_motor_database(get_settings(), database_name=db_name)
+    cursor = db["commerce_orders"].find(query).sort("createdAt", -1).skip(skip).limit(limit)
+    return _map_ids(await cursor.to_list(length=limit))
 
 async def get_order(db_name: str, *, order_id: str) -> dict[str, Any] | None:
     return await _find_one_by_id(db_name, "commerce_orders", order_id)
+
+async def get_todays_orders_count(db_name: str) -> int:
+    db = get_runtime_motor_database(get_settings(), database_name=db_name)
+    from datetime import datetime, time
+    import pytz
+    ist = pytz.timezone('Asia/Kolkata')
+    now = datetime.now(ist)
+    start_of_day = ist.localize(datetime.combine(now.date(), time.min))
+    return await db["commerce_orders"].count_documents({"createdAt": {"$gte": start_of_day}})
 
 
 async def list_order_lines_for_orders(db_name: str, *, order_ids: list[str]) -> list[dict[str, Any]]:
@@ -1186,54 +1204,11 @@ async def list_order_lines_for_orders(db_name: str, *, order_ids: list[str]) -> 
     return _map_ids(await cursor.to_list(length=5000))
 
 
-async def create_order(
-    db_name: str,
-    *,
-    customer_id: str,
-    price_list_id: str | None,
-    tax_profile_id: str | None,
-    coupon_code: str | None,
-    status: str,
-    currency: str,
-    subtotal_minor: int,
-    discount_minor: int,
-    tax_minor: int,
-    total_minor: int,
-    payment_status: str,
-    paid_minor: int,
-    refunded_minor: int,
-    balance_minor: int,
-    invoice_number: str | None,
-    invoice_issued_at: str | None,
-    inventory_reserved: bool,
-    placed_at: str | None,
-) -> dict[str, Any]:
+async def create_order(db_name: str, data: dict[str, Any]) -> dict[str, Any]:
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
-    doc = {
-        "_id": str(uuid4()),
-        "customer_id": customer_id,
-        "price_list_id": price_list_id,
-        "tax_profile_id": tax_profile_id,
-        "coupon_code": coupon_code,
-        "status": status,
-        "currency": currency,
-        "subtotal_minor": subtotal_minor,
-        "discount_minor": discount_minor,
-        "tax_minor": tax_minor,
-        "total_minor": total_minor,
-        "payment_status": payment_status,
-        "paid_minor": paid_minor,
-        "refunded_minor": refunded_minor,
-        "balance_minor": balance_minor,
-        "invoice_number": invoice_number,
-        "invoice_issued_at": invoice_issued_at,
-        "inventory_reserved": inventory_reserved,
-        "placed_at": placed_at,
-        "created_at": datetime.now(tz=UTC),
-        "updated_at": datetime.now(tz=UTC),
-    }
-    await db["commerce_orders"].insert_one(doc)
-    return _map_id(doc)
+    result = await db["commerce_orders"].insert_one(data)
+    data["id"] = str(result.inserted_id)
+    return data
 
 
 async def create_order_line(

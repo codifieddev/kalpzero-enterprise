@@ -123,7 +123,7 @@ async def commerce_categories(
     try:
         return {
             "tenant_id": session.tenant_id,
-            "categories": await list_categories(
+            "data": await list_categories(
                 db,
                 tenant_slug=session.tenant_id,
                 db_name=session.tenant_db_name,
@@ -140,7 +140,7 @@ async def commerce_categories_create(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return await create_category(
+        result = await create_category(
             db,
             tenant_slug=session.tenant_id,
             name=payload.name,
@@ -154,6 +154,10 @@ async def commerce_categories_create(
             metaDescription=payload.metaDescription,
             db_name=session.tenant_db_name
         )
+        return {
+            "tenant_id": session.tenant_id,
+            "data": result,
+        }
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -166,13 +170,17 @@ async def commerce_categories_update(
     db: Session = Depends(get_db_session),
 ):
     try:
-        return await update_category(
+        result = await update_category(
             db,
             db_name=session.tenant_db_name,
             tenant_slug=session.tenant_id,
             category_id=category_id,
             **payload.model_dump(exclude_unset=True)
         )
+        return {
+            "tenant_id": session.tenant_id,
+            "data": result,
+        }
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -190,6 +198,10 @@ async def commerce_categories_delete(
             tenant_slug=session.tenant_id,
             category_id=category_id
         )
+        return {
+            "tenant_id": session.tenant_id,
+            "data": category_id,
+        }
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -630,7 +642,7 @@ async def commerce_products(
         )
         return {
             "tenant_id": session.tenant_id,
-            "products": data["data"],
+            "data": data["data"],
             "totalProducts": data["total"],
             "filters": data["filters"]
         }
@@ -727,11 +739,28 @@ async def commerce_products_delete(
 
 @router.get("/orders")
 async def commerce_orders(
+    search: str | None = None,
+    page: int = 1,
+    perPage: int = 50,
     session: SessionContext = Depends(require_permission("commerce.orders.read")),
     db: Session = Depends(get_db_session),
 ):
     try:
-        return {"tenant_id": session.tenant_id, "orders": await list_orders(db, tenant_slug=session.tenant_id, db_name=session.tenant_db_name)}
+        data = await list_orders(
+            db,
+            tenant_slug=session.tenant_id,
+            db_name=session.tenant_db_name,
+            search=search,
+            page=page,
+            per_page=perPage
+        )
+        return {
+            "tenant_id": session.tenant_id,
+            "data": data["data"],
+            "total": data["total"],
+            "page": data["page"],
+            "perPage": data["per_page"]
+        }
     except Exception as exc:
         _raise_http_error(exc)
 
@@ -858,15 +887,10 @@ async def commerce_orders_create(
     try:
         return await create_order(
             db,
-            tenant_slug=session.tenant_id, db_name=session.tenant_db_name,
+            tenant_slug=session.tenant_id,
+            db_name=session.tenant_db_name,
             actor_user_id=session.user_id,
-            customer_id=payload.customer_id,
-            price_list_id=payload.price_list_id,
-            tax_profile_id=payload.tax_profile_id,
-            coupon_code=payload.coupon_code,
-            status=payload.status,
-            currency=payload.currency,
-            lines=[line.model_dump() for line in payload.lines],
+            payload=payload.model_dump()
         )
     except Exception as exc:
         _raise_http_error(exc)

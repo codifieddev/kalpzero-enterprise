@@ -3,6 +3,7 @@ from typing import Any
 from bson import ObjectId
 from app.core.config import get_settings
 from app.db.mongo import get_runtime_motor_database
+from app.utlis.utlis import serialize_mongo
 
 def _map_id(doc: dict[str, Any] | None) -> dict[str, Any] | None:
     if doc is None:
@@ -15,7 +16,7 @@ async def list_forms(db_name: str) -> list[dict[str, Any]]:
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
     cursor = db["forms"].find({}).sort("createdAt", -1)
     docs = await cursor.to_list(length=1000)
-    return [_map_id(doc) for doc in docs]
+    return [serialize_mongo(doc) for doc in docs]
 
 async def get_form(db_name: str, form_id: str) -> dict[str, Any] | None:
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
@@ -24,7 +25,7 @@ async def get_form(db_name: str, form_id: str) -> dict[str, Any] | None:
         doc = await db["forms"].find_one({"_id": oid})
     except Exception:
         doc = await db["forms"].find_one({"_id": form_id})
-    return _map_id(doc)
+    return serialize_mongo(doc)
 
 async def create_form(db_name: str, data: dict[str, Any]) -> dict[str, Any]:
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
@@ -32,7 +33,7 @@ async def create_form(db_name: str, data: dict[str, Any]) -> dict[str, Any]:
     data["updatedAt"] = datetime.now(tz=UTC)
     result = await db["forms"].insert_one(data)
     data["id"] = str(result.inserted_id)
-    return data
+    return serialize_mongo(data)
 
 async def update_form(db_name: str, form_id: str, data: dict[str, Any]) -> dict[str, Any] | None:
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
@@ -53,7 +54,7 @@ async def update_form(db_name: str, form_id: str, data: dict[str, Any]) -> dict[
         {"$set": data},
         return_document=True
     )
-    return _map_id(result)
+    return serialize_mongo(result)
 
 async def delete_form(db_name: str, form_id: str) -> bool:
     db = get_runtime_motor_database(get_settings(), database_name=db_name)
