@@ -10,6 +10,8 @@ import {
     Settings, Users, Database, Globe, BarChart3, ChevronRight
 } from 'lucide-react';
 import { canRoleAccessAdminPath } from '@/lib/role-scope';
+import { useSelector } from 'react-redux';
+import { RootState } from '@/lib/store';
 
 interface ControlCenterGroup {
     title: string;
@@ -27,12 +29,14 @@ interface ControlCenterItem {
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
     const pathname = usePathname();
     const router = useRouter();
-    const { currentProfile, user } = useAuth();
+    // const { currentProfile, user } = useAuth();
+
+    const {authUser} = useSelector((state:RootState)=>state.auth)
     // We treat "/settings" as the hub. The children prop handles actual settings page renders.
     // So if pathname === '/settings', we render the dashboard grid. Otherwise we just render children.
     const isHubView = pathname === '/settings';
     const isStandaloneSettingsPage = pathname === '/settings/export';
-    const activeRole = user?.role ? currentProfile : 'viewer';
+    const activeRole = authUser?.role ? authUser.role : 'viewer';
     // Role-based visibility checks
     const canSeeTenant = canRoleAccessAdminPath(activeRole, '/settings/tenant');
     const canSeePlatform = canRoleAccessAdminPath(activeRole, '/settings/platform');
@@ -46,7 +50,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     const canSeeSystemRegistry = canRoleAccessAdminPath(activeRole, '/admin/registry');
     const canSeeTenantResources = canRoleAccessAdminPath(activeRole, '/tenant/resources');
     const canSeeAgencyResources = canRoleAccessAdminPath(activeRole, '/agency/resources');
-    const hasDedicatedWorkspace = user?.provisioningMode === 'full_tenant';
+    // const hasDedicatedWorkspace = authUser?.provisioningMode === 'full_tenant';
     // Setup the groups per the PRD
     const groups: ControlCenterGroup[] = [
 
@@ -72,7 +76,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
             title: "Personalization",
             items: [
                 ...(canSeeAdminTheme ? [{ href: '/settings/admin-theme', label: 'Admin Appearance', description: 'Customize the backend theme for your ecosystem', icon: <Palette size={24} />, colorClass: 'text-amber-400' }] : []),
-                ...(canSeeAdminWorkspace && hasDedicatedWorkspace ? [{ href: '/settings/admin-workspace', label: 'Workspace Customization', description: 'Control sidebar labels, dashboard cards, widgets, and home layout', icon: <LayoutDashboard size={24} />, colorClass: 'text-cyan-400' }] : []),
+                // ...(canSeeAdminWorkspace && hasDedicatedWorkspace ? [{ href: '/settings/admin-workspace', label: 'Workspace Customization', description: 'Control sidebar labels, dashboard cards, widgets, and home layout', icon: <LayoutDashboard size={24} />, colorClass: 'text-cyan-400' }] : []),
                 ...(canSeeAgencyResources ? [{ href: '/agency/resources', label: 'Agency Resources', description: 'View aggregate resource usage for your agency', icon: <BarChart3 size={24} />, colorClass: 'text-fuchsia-400' }] : []),
                 ...(!canSeeAgencyResources && canSeeTenantResources ? [{ href: '/tenant/resources', label: 'Business Resources', description: 'View resource usage limits and metrics', icon: <BarChart3 size={24} />, colorClass: 'text-fuchsia-400' }] : []),
             ]
