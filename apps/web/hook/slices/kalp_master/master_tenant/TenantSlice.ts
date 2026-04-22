@@ -1,11 +1,11 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import {  fetchTenants, createTenant, updateTenant, deleteTenant } from './TenantThunk';
-import { TenantSwitcherOption } from '@/components/AdminLayout';
+import { fetchTenants, createTenant, updateTenant, deleteTenant } from './TenantThunk';
+import { TenantSwitcherOption } from '@/components/adminLayout/AdminLayout';
 import { Tenant } from '@/app/(dashboard)/settings/tenant/tenantType';
 
 export interface TenantState {
     allTenant: TenantSwitcherOption[];
-    currentTenant: Tenant |null;
+    currentTenant: Tenant | null;
     isFetchedAlltenant: boolean;
     loading: boolean;
     error: string | null;
@@ -23,7 +23,7 @@ export const tenantSlice = createSlice({
     name: 'tenant',
     initialState,
     reducers: {
-        setCurrentTenant: (state, action: PayloadAction< Tenant|null>) => {
+        setCurrentTenant: (state, action: PayloadAction<Tenant | null>) => {
             state.currentTenant = action.payload;
         },
         clearTenantState: (state) => {
@@ -73,15 +73,15 @@ export const tenantSlice = createSlice({
             })
             .addCase(updateTenant.fulfilled, (state, action) => {
                 state.loading = false;
-               state.currentTenant=action.payload;    
+                state.currentTenant = action.payload;
             })
             .addCase(updateTenant.rejected, (state, action) => {
                 state.loading = false;
                 state.error = action.payload || 'Unknown Error';
             })
 
-            // Delete
-      
+        // Delete
+
     },
 });
 

@@ -1,5 +1,5 @@
 import { createAsyncThunk } from "@reduxjs/toolkit";
-import { TenantSwitcherOption } from "@/components/AdminLayout";
+import { TenantSwitcherOption } from "@/components/adminLayout/AdminLayout";
 import { Tenant } from "@/app/(dashboard)/settings/tenant/tenantType";
 
 // Fetch all tenants

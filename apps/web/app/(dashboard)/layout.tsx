@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "../globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
-import { AdminLayout } from "@/components/AdminLayout";
+import { AdminLayout } from "@/components/adminLayout/AdminLayout";
 import { ThemeInjector } from "@/components/ThemeInjector";
 import { I18nProvider } from "@/lib/i18n/context";
 import { KoshieProvider } from "@/components/KoshieContext";

@@ -3,16 +3,14 @@
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { RoleSwitcher } from "./RoleSwitcher";
+import { RoleSwitcher } from "../RoleSwitcher";
+import { NavItem } from "./NavItem";
 import {
   LayoutDashboard,
   FileText,
   Settings,
   Database,
   Activity,
-  Folder,
-  Layers,
-  LogOut,
   Globe,
   Languages,
   Bot,
@@ -21,17 +19,26 @@ import {
   ChevronsRight,
   Search as SearchIcon,
   X,
+  Folder,
   Menu,
 } from "lucide-react";
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "../AuthProvider";
 import { useTranslation } from "@/lib/i18n/context";
 import { PermissionEngine } from "@engine/permission-engine";
 import type { NavEntrySpec, RegistrySnapshot } from "@core/contracts/registry";
 import { canRoleAccessAdminPath, type RoleProfileKey } from "@/lib/role-scope";
 import { KalpBodhQuickDrawer } from "@/components/kalpbodh/KalpBodhQuickDrawer";
 import { useKoshie } from "@/components/KoshieContext";
-import { resolveAdminIcon } from "@/lib/admin-icon-catalog";
-import GetAllTenant from "./tenant/GetAllTenant";
+import GetAllTenant from "../tenant/GetAllTenant";
+import {
+  resolveNavIcon,
+  isPathActive,
+  inferModuleKeyFromNav,
+  normalizeSectionId,
+  applyNavOverride,
+  normalizeBusinessContext,
+  hasTravelSignals,
+} from "./util/utilFunction";
 import { useAppSelector } from "@/hook/store/hooks";
 import { RootState } from "@/hook/store/store";
 import { useSelector } from "react-redux";
@@ -42,314 +49,16 @@ import {
   mergeAdminWorkspace,
   type AdminWorkspaceSectionKey,
 } from "@/lib/admin-workspace";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { SidebarFooter } from "./SidebarFooter";
+import { TenantPicker } from "./TenantPicker";
+import {
+  SECTION_META,
+  SECTION_ORDER,
+  FALLBACK_MODULE_NAVS,
+} from "./util/constants";
 
-const SECTION_META: Record<
-  string,
-  { label: string; labelKey: string; headingClass: string; dotClass: string }
-> = {
-  commerce: {
-    label: "Commerce",
-    labelKey: "section.commerce",
-    headingClass: "text-purple-500/70",
-    dotClass: "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]",
-  },
-  operations: {
-    label: "Operations",
-    labelKey: "section.operations",
-    headingClass: "text-orange-500/70",
-    dotClass: "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.8)]",
-  },
-  content: {
-    label: "Content",
-    labelKey: "section.content",
-    headingClass: "text-emerald-500/70",
-    dotClass: "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]",
-  },
-  engagement: {
-    label: "Engagement",
-    labelKey: "section.engagement",
-    headingClass: "text-amber-500/70",
-    dotClass: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]",
-  },
-  modules: {
-    label: "Apps",
-    labelKey: "section.modules",
-    headingClass: "text-indigo-500/70",
-    dotClass: "bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.7)]",
-  },
-};
 
-const SECTION_ORDER: Record<string, number> = {
-  commerce: 10,
-  operations: 20,
-  content: 30,
-  engagement: 40,
-  modules: 50,
-};
-
-const FALLBACK_MODULE_NAVS: Record<string, NavEntrySpec[]> = {
-  website: [
-    {
-      id: "nav.website.pages",
-      label: "Website Pages",
-      path: "/pages",
-      parentId: "group.content",
-      requiredPermissionId: "perm.website.read",
-    },
-    {
-      id: "nav.website.forms",
-      label: "Forms",
-      path: "/forms",
-      parentId: "group.content",
-      requiredPermissionId: "perm.website.forms.read",
-    },
-  ],
-  branding: [
-    {
-      id: "nav.branding",
-      label: "Brand Kit",
-      path: "/branding",
-      parentId: "group.engagement",
-      requiredPermissionId: "perm.branding.read",
-    },
-  ],
-  products: [
-    {
-      id: "nav.products",
-      label: "Products",
-      path: "/ecommerce",
-      parentId: "group.commerce",
-      requiredPermissionId: "perm.products.read",
-    },
-    {
-      id: "nav.products.categories",
-      label: "Categories",
-      path: "/ecommerce/categories",
-      parentId: "group.commerce",
-      requiredPermissionId: "perm.products.read",
-    },
-    {
-      id: "nav.products.attributes",
-      label: "Attribute Sets",
-      path: "/ecommerce/attributes",
-      parentId: "group.commerce",
-      requiredPermissionId: "perm.products.read",
-    },
-    {
-      id: "nav.travel.packages",
-      label: "Travel Packages",
-      path: "/travel/packages",
-      parentId: "group.commerce",
-      requiredPermissionId: "perm.products.read",
-    },
-  ],
-  ecommerce: [
-    {
-      id: "nav.ecommerce.orders",
-      label: "Orders",
-      path: "/ecommerce/orders",
-      parentId: "group.operations",
-      requiredPermissionId: "perm.ecommerce.read",
-    },
-    {
-      id: "nav.ecommerce.payments-shipping",
-      label: "Payments & Shipping",
-      path: "/commerce/payments-shipping",
-      parentId: "group.operations",
-      requiredPermissionId: "perm.ecommerce.read",
-    },
-  ],
-  bookings: [
-    {
-      id: "nav.bookings",
-      label: "Bookings",
-      path: "/bookings",
-      parentId: "group.engagement",
-      requiredPermissionId: "perm.bookings.read",
-    },
-  ],
-  marketing: [
-    {
-      id: "nav.marketing",
-      label: "Marketing",
-      path: "/marketing",
-      parentId: "group.engagement",
-      requiredPermissionId: "perm.marketing.read",
-    },
-  ],
-  blog: [
-    {
-      id: "nav.blog",
-      label: "Blog",
-      path: "/blog",
-      parentId: "group.content",
-      requiredPermissionId: "perm.blog.read",
-    },
-  ],
-  portfolio: [
-    {
-      id: "nav.portfolio",
-      label: "Portfolio",
-      path: "/portfolio",
-      parentId: "group.content",
-      requiredPermissionId: "perm.portfolio.read",
-    },
-  ],
-  media: [
-    {
-      id: "nav.media",
-      label: "Media Library",
-      path: "/media",
-      parentId: "group.content",
-      requiredPermissionId: "perm.media.read",
-    },
-  ],
-  invoicing: [
-    {
-      id: "nav.invoicing",
-      label: "Invoicing",
-      path: "/invoices",
-      parentId: "group.operations",
-      requiredPermissionId: "perm.invoicing.read",
-    },
-  ],
-  hotel_management: [
-    {
-      id: "nav.hotelManagement",
-      label: "Hotel Management",
-      path: "/hotel-management",
-      parentId: "group.operations",
-      requiredPermissionId: "perm.hotel_management.read",
-    },
-  ],
-  tour_management: [
-    {
-      id: "nav.tourManagement",
-      label: "Tour Management",
-      path: "/tour-management",
-      parentId: "group.operations",
-      requiredPermissionId: "perm.tour_management.read",
-    },
-  ],
-  real_estate: [
-    {
-      id: "nav.real_estate",
-      label: "Real Estate",
-      path: "/real-estate",
-      parentId: "group.commerce",
-      requiredPermissionId: "perm.real_estate.read",
-    },
-  ],
-  source: [
-    {
-      id: "nav.source",
-      label: "Source",
-      path: "/sources",
-      parentId: "group.modules",
-      requiredPermissionId: "perm.source.read",
-    },
-  ],
-  kalpbodh: [
-    {
-      id: "nav.kalpbodh",
-      label: "KalpBodh",
-      path: "/kalpbodh",
-      parentId: "group.engagement",
-      requiredPermissionId: "perm.kalpbodh.read",
-    },
-  ],
-};
-
-function resolveNavIcon(icon?: string): React.ElementType {
-  const resolved = resolveAdminIcon(icon);
-  if (resolved) return resolved;
-  return Layers;
-}
-
-function isPathActive(pathname: string, href: string): boolean {
-  if (pathname === href) return true;
-  if (href === "/") return pathname === "/";
-  return pathname.startsWith(`${href}/`);
-}
-
-function inferModuleKeyFromNav(nav: NavEntrySpec): string | null {
-  if (typeof nav?.requiredPermissionId === "string") {
-    const match = nav.requiredPermissionId.match(/^perm\.([^.]+)\./);
-    if (match?.[1]) return match[1];
-  }
-
-  if (typeof nav?.id === "string" && nav.id.startsWith("nav.")) {
-    const inferred = nav.id.slice(4).split(".")[0]?.trim();
-    if (inferred) return inferred;
-  }
-
-  if (typeof nav?.path === "string") {
-    const firstSegment = nav.path.replace(/^\//, "").split("/")[0]?.trim();
-    if (firstSegment) return firstSegment;
-  }
-
-  return null;
-}
-
-function normalizeSectionId(parentId: unknown): string {
-  if (typeof parentId !== "string") return "modules";
-  const trimmed = parentId.trim().toLowerCase();
-  if (!trimmed) return "modules";
-  if (trimmed.startsWith("group.")) return trimmed.replace("group.", "");
-  if (trimmed.startsWith("section.")) return trimmed.replace("section.", "");
-  return trimmed;
-}
-
-function applyNavOverride(
-  nav: NavEntrySpec,
-  overrides: Record<string, Partial<NavEntrySpec>>,
-): NavEntrySpec {
-  const override = overrides[nav.id];
-  if (!override) return nav;
-
-  return {
-    ...nav,
-    label:
-      typeof override.label === "string" && override.label.trim()
-        ? override.label
-        : nav.label,
-    path:
-      typeof override.path === "string" && override.path.trim()
-        ? override.path
-        : nav.path,
-    icon:
-      typeof override.icon === "string" && override.icon.trim()
-        ? override.icon
-        : nav.icon,
-    parentId:
-      typeof override.parentId === "string" && override.parentId.trim()
-        ? override.parentId
-        : nav.parentId,
-  };
-}
-
-function normalizeBusinessContext(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function hasTravelSignals(value: string): boolean {
-  const normalized = normalizeBusinessContext(value);
-  if (!normalized) return false;
-  const travelTokens = [
-    "travel",
-    "tour",
-    "itinerary",
-    "trip",
-    "vacation",
-    "hospitality",
-  ];
-  return travelTokens.some((token) => normalized.includes(token));
-}
 
 const pEngine = new PermissionEngine();
 
@@ -368,10 +77,7 @@ function hasBusinessContext(
   );
 }
 
-interface AdminLayoutProps {
-  children: React.ReactNode;
-  activeTenant: string;
-}
+
 
 export interface TenantSwitcherOption {
   _id?: string;
@@ -395,55 +101,11 @@ type SidebarRenderableItem = {
   icon: React.ReactNode;
   label: string;
 };
-
-const LOCALE_META: Record<string, { flag: string; label: string }> = {
-  en: { flag: "🇬🇧", label: "EN" },
-  hi: { flag: "🇮🇳", label: "HI" },
-  hr: { flag: "🇭🇷", label: "HR" },
-  "zh-hant": { flag: "🇹🇼", label: "繁中" },
-};
-
-function LanguageSwitcher() {
-  const { locale, setLocale, availableLocales } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const meta = LOCALE_META[locale] || LOCALE_META.en;
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 bg-slate-900/50 px-2.5 py-1.5 rounded-full border border-slate-800 shadow-inner text-xs hover:border-slate-600 transition-colors"
-      >
-        <Languages size={12} className="text-slate-400" />
-        <span>{meta.flag}</span>
-        <span className="text-slate-400 font-bold text-[10px]">
-          {meta.label}
-        </span>
-      </button>
-      {open && (
-        <div className="absolute top-full right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg overflow-hidden shadow-xl z-50 min-w-[120px]">
-          {availableLocales.map((loc) => {
-            const m = LOCALE_META[loc];
-            if (!m) return null;
-            return (
-              <button
-                key={loc}
-                onClick={() => {
-                  setLocale(loc);
-                  setOpen(false);
-                }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-800 transition-colors ${locale === loc ? "text-cyan-400 bg-slate-800/50" : "text-slate-300"}`}
-              >
-                <span>{m.flag}</span>
-                <span className="font-medium">{m.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
+interface AdminLayoutProps {
+  children: React.ReactNode;
+  activeTenant: string;
 }
+
 
 export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
   const authCtx = useAuth();
@@ -466,7 +128,6 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
 
   const [tenantSwitchError, setTenantSwitchError] = useState("");
   const [tenantPickerOpen, setTenantPickerOpen] = useState(false);
-  const [tenantPickerQuery, setTenantPickerQuery] = useState("");
   const [quickBodhOpen, setQuickBodhOpen] = useState(false);
   const [agencyBranding, setAgencyBranding] = useState<AgencyBranding>({
     agencyName: "",
@@ -930,20 +591,6 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
     [resolvedActiveModuleNavs],
   );
 
-  const filteredTenantOptions = useMemo(() => {
-    const query = tenantPickerQuery.trim().toLowerCase();
-    const source =
-      tenantOptions.length > 0
-        ? tenantOptions
-        : [{ key: activeTenant, name: activeTenant }];
-    if (!query) return source;
-    return source.filter(
-      (item) =>
-        item?.key?.toLowerCase().includes(query) ||
-        item?.name?.toLowerCase().includes(query),
-    );
-  }, [tenantOptions, tenantPickerQuery, activeTenant]);
-
   const { allTenant } = useAppSelector((state: RootState) => state.tenant);
   useEffect(() => {
     if (allTenant.length > 0) {
@@ -1018,10 +665,7 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
   // }, [authCtx.user, canSwitchTenant]);
 
   useEffect(() => {
-    if (!tenantPickerOpen) {
-      setTenantPickerQuery("");
-      return;
-    }
+    if (!tenantPickerOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setTenantPickerOpen(false);
@@ -1432,27 +1076,27 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
   const isDashboardHome = pathname === "/dashboard";
   const shellStyle: React.CSSProperties = isDashboardHome
     ? {
-        color: "#e2e8f0",
-        background:
-          "radial-gradient(circle at top left, rgba(34,211,238,0.12), transparent 24%), radial-gradient(circle at top right, rgba(129,140,248,0.12), transparent 28%), linear-gradient(180deg, #020617 0%, #020817 42%, #030712 100%)",
-      }
+      color: "#e2e8f0",
+      background:
+        "radial-gradient(circle at top left, rgba(34,211,238,0.12), transparent 24%), radial-gradient(circle at top right, rgba(129,140,248,0.12), transparent 28%), linear-gradient(180deg, #020617 0%, #020817 42%, #030712 100%)",
+    }
     : { backgroundColor: "var(--background)", color: "var(--text)" };
   const chromeSurfaceStyle: React.CSSProperties = isDashboardHome
     ? {
-        backgroundColor: "rgba(2, 6, 23, 0.82)",
-        borderColor: "rgba(51, 65, 85, 0.72)",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
-      }
+      backgroundColor: "rgba(2, 6, 23, 0.82)",
+      borderColor: "rgba(51, 65, 85, 0.72)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+    }
     : {
-        backgroundColor: "var(--surface)",
-        borderColor: "var(--border)",
-      };
+      backgroundColor: "var(--surface)",
+      borderColor: "var(--border)",
+    };
   const mainStyle: React.CSSProperties = isDashboardHome
     ? {
-        padding: "var(--admin-main-padding)",
-        background:
-          "linear-gradient(180deg, rgba(2,6,23,0.24) 0%, rgba(2,6,23,0.56) 100%)",
-      }
+      padding: "var(--admin-main-padding)",
+      background:
+        "linear-gradient(180deg, rgba(2,6,23,0.24) 0%, rgba(2,6,23,0.56) 100%)",
+    }
     : { padding: "var(--admin-main-padding)" };
   return (
     <>
@@ -1676,130 +1320,18 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
             )}
           </div>
 
-          {/* Context Footer */}
-          <div className="mt-auto border-t border-slate-800/80 bg-black/40 relative p-3">
-            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-slate-700 to-transparent"></div>
-            <div
-              className={`text-[10px] uppercase tracking-widest text-slate-400 mb-2 font-semibold flex items-center ${sidebarCollapsed && !isMobileMenuOpen ? "justify-center" : "justify-between"}`}
-            >
-              <span>{t("topbar.activeNode", "Active Node")}</span>
-              {(!sidebarCollapsed || isMobileMenuOpen) && (
-                <span className="flex items-center gap-1.5">
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                  </span>
-                  <span className="text-emerald-500 font-mono">
-                    {t("topbar.live", "LIVE")}
-                  </span>
-                </span>
-              )}
-            </div>
-            <div
-              className={`font-mono text-xs text-cyan-300 bg-cyan-950/30 px-3 py-2 rounded-md border border-cyan-900/50 shadow-inner break-all ${sidebarCollapsed && !isMobileMenuOpen ? "text-center px-1 text-[10px]" : ""}`}
-            >
-              {sidebarCollapsed && !isMobileMenuOpen ? (
-                <span className="text-slate-400">{activeTenant}</span>
-              ) : (
-                <>
-                  <span className="text-slate-500 mr-2">db:</span>kalp_tenant_
-                  {activeTenant}
-                </>
-              )}
-            </div>
-            {(!sidebarCollapsed || isMobileMenuOpen) && canSwitchTenant && (
-              <div className="mt-2 space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-slate-500">
-                  {t("topbar.switchTenant", "Switch Tenant")}
-                </label>
-                <button
-                  type="button"
-                  disabled={tenantOptionsLoading || tenantSwitchingTo !== null}
-                  onClick={() => setTenantPickerOpen(true)}
-                  className="w-full rounded-md border border-slate-700 bg-slate-950/80 px-2 py-1.5 text-left text-xs text-slate-100 focus:border-cyan-500/60 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70 hover:border-cyan-500/40"
-                >
-                  {tenantOptionsLoading ? (
-                    t("common.loading", "Loading...")
-                  ) : (
-                    <span className="flex items-center justify-between">
-                      <span className="truncate">
-                        {tenantOptions.find((item) => item.key === activeTenant)
-                          ?.name || activeTenant}{" "}
-                        ({activeTenant})
-                      </span>
-                      <span className="text-slate-500">
-                        {tenantOptions.length || 1}
-                      </span>
-                    </span>
-                  )}
-                </button>
-                {tenantSwitchingTo && (
-                  <p className="text-[10px] text-cyan-300/80">
-                    {t("topbar.switching", "Switching")}... {tenantSwitchingTo}
-                  </p>
-                )}
-                {tenantSwitchError && (
-                  <p className="text-[10px] text-rose-300">
-                    {tenantSwitchError}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {authCtx.user && (
-              <div
-                className={`mt-3 rounded-lg border border-slate-800 bg-slate-900/60 ${sidebarCollapsed && !isMobileMenuOpen ? "p-2" : "p-3"}`}
-              >
-                <div
-                  className={`flex items-center ${sidebarCollapsed && !isMobileMenuOpen ? "justify-center" : "justify-between"} gap-2`}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 text-xs font-bold">
-                      {authCtx.user.name?.charAt(0).toUpperCase() || "U"}
-                    </div>
-                    {(!sidebarCollapsed || isMobileMenuOpen) && (
-                      <div className="min-w-0">
-                        <div className="text-xs text-white font-medium leading-none truncate">
-                          {authCtx.user.name}
-                        </div>
-                        <div className="text-[10px] text-slate-500 font-mono truncate">
-                          {authCtx.user.email}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {(!sidebarCollapsed || isMobileMenuOpen) && (
-                    <div className="flex items-center gap-1">
-                      <Link
-                        href="/settings/user"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:border-cyan-500/40 hover:text-cyan-200"
-                        title={t("nav.userSettings", "User Settings")}
-                      >
-                        <Settings size={13} />
-                      </Link>
-                      <button
-                        onClick={handlelogout}
-                       // onClick={() => authCtx.logout()}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:border-rose-500/40 hover:text-rose-300"
-                        title={t("auth.logout", "Logout")}
-                      >
-                        <LogOut size={13} />
-                      </button>
-                    </div>
-                  )}
-                  {sidebarCollapsed && !isMobileMenuOpen && (
-                    <button
-                      onClick={handlelogout}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:border-rose-500/40 hover:text-rose-300"
-                      title={t("auth.logout", "Logout")}
-                    >
-                      <LogOut size={13} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
+          <SidebarFooter
+            sidebarCollapsed={sidebarCollapsed}
+            isMobileMenuOpen={isMobileMenuOpen}
+            activeTenant={activeTenant}
+            canSwitchTenant={canSwitchTenant}
+            tenantOptionsLoading={tenantOptionsLoading}
+            tenantSwitchingTo={tenantSwitchingTo}
+            tenantOptions={tenantOptions}
+            setTenantPickerOpen={setTenantPickerOpen}
+            tenantSwitchError={tenantSwitchError}
+            onLogout={handlelogout}
+          />
         </aside>
 
         {/* Main Content Area */}
@@ -1880,8 +1412,8 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
                   type="button"
                   onClick={() => setQuickBodhOpen((prev) => !prev)}
                   className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${isQuickBodhDrawerOpen
-                      ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100"
-                      : "border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500"
+                    ? "border-cyan-400/60 bg-cyan-500/20 text-cyan-100"
+                    : "border-slate-700 bg-slate-900/60 text-slate-300 hover:border-slate-500"
                     }`}
                   title="Open KalpBodh quick assistant"
                 >
@@ -1895,6 +1427,7 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
                 <div className="text-[10px] uppercase tracking-widest text-slate-400 font-bold ml-2">
                   {t("topbar.role", "Role")}:
                 </div>
+             
                 <RoleSwitcher />
               </div>
             </div>
@@ -1909,92 +1442,14 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
           </main>
         </div>
 
-        {tenantPickerOpen && canSwitchTenant && (
-          <div className="absolute inset-0 z-[80] flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4">
-            <div className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-950 shadow-2xl">
-              <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">
-                    {t("topbar.switchTenant", "Switch Tenant")}
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Search by business name or tenant key.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTenantPickerOpen(false)}
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"
-                  aria-label="Close tenant picker"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <div className="p-4">
-                <div className="relative">
-                  <SearchIcon
-                    size={14}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-                  />
-                  <input
-                    value={tenantPickerQuery}
-                    onChange={(event) =>
-                      setTenantPickerQuery(event.target.value)
-                    }
-                    placeholder="Search tenant..."
-                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-9 py-2 text-sm text-slate-100 focus:border-cyan-500/60 focus:outline-none"
-                  />
-                </div>
-                <div className="mt-3 max-h-[360px] overflow-y-auto space-y-2 pr-1">
-                  {filteredTenantOptions.length === 0 ? (
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/70 px-3 py-2 text-xs text-slate-500">
-                      No tenants match this search.
-                    </div>
-                  ) : (
-                    filteredTenantOptions.map((item) => {
-                      const isActive = item.key === activeTenant;
-                      return (
-                        <button
-                          key={item.key}
-                          type="button"
-                          onClick={() => {
-                            void handleTenantSwitch(item?.key ?? "");
-                          }}
-                          disabled={tenantSwitchingTo !== null}
-                          className={`w-full rounded-lg border px-3 py-2 text-left transition ${isActive
-                              ? "border-cyan-500/40 bg-cyan-500/10"
-                              : "border-slate-800 bg-slate-900/60 hover:border-slate-600"
-                            } disabled:cursor-not-allowed disabled:opacity-70`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-semibold text-slate-100">
-                                {item.name}
-                              </div>
-                              <div className="truncate text-[11px] font-mono text-slate-500">
-                                {item.key}
-                              </div>
-                            </div>
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wider ${isActive
-                                  ? "border-cyan-500/40 text-cyan-300"
-                                  : "border-slate-700 text-slate-500"
-                                }`}
-                            >
-                              {isActive
-                                ? "Active"
-                                : item.subscriptionLevel || "tenant"}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <TenantPicker
+          isOpen={tenantPickerOpen && canSwitchTenant}
+          activeTenant={activeTenant}
+          tenantOptions={tenantOptions}
+          onClose={() => setTenantPickerOpen(false)}
+          onSwitch={(key) => void handleTenantSwitch(key)}
+          switchingTo={tenantSwitchingTo}
+        />
 
         {canOpenKalpBodhDrawer && (
           <KalpBodhQuickDrawer
@@ -2008,61 +1463,3 @@ export function AdminLayout({ children, activeTenant }: AdminLayoutProps) {
   );
 }
 
-function NavItem({
-  href,
-  icon,
-  label,
-  active = false,
-  borderHover = false,
-  collapsed = false,
-  onClick,
-}: {
-  href: string;
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  borderHover?: boolean;
-  collapsed?: boolean;
-  onClick?: () => void;
-}) {
-  const router = useRouter();
-
-  const handleClick = () => {
-    router.push(href);
-    if (onClick) onClick();
-  };
-
-  return (
-    <button
-      onClick={handleClick}
-      title={collapsed ? label : undefined}
-      className={`w-full flex items-center gap-3 py-2.5 rounded-lg text-sm transition-all duration-300 relative group overflow-hidden ${collapsed ? "justify-center px-2" : "px-3"} ${active ? "bg-cyan-500/10 text-cyan-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]" : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"}`}
-    >
-      {/* Active Indicator Line */}
-      {active && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-1/2 bg-cyan-400 rounded-r-md shadow-[0_0_10px_rgba(0,240,255,0.8)]"></div>
-      )}
-
-      {/* Icon */}
-      <span
-        className={`relative z-10 transition-colors ${active ? "text-cyan-400" : "group-hover:text-cyan-400/70"}`}
-      >
-        {icon}
-      </span>
-
-      {/* Label */}
-      {!collapsed && (
-        <span
-          className={`relative z-10 tracking-wide ${active ? "font-medium" : "font-normal"}`}
-        >
-          {label}
-        </span>
-      )}
-
-      {/* Optional border glow on hover */}
-      {borderHover && !active && (
-        <div className="absolute inset-0 border border-transparent group-hover:border-cyan-500/30 rounded-lg transition-colors pointer-events-none"></div>
-      )}
-    </button>
-  );
-}
