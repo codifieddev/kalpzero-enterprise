@@ -1,3 +1,13 @@
+from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.tests._direct import ensure_project_python, run_current_test_file
+
+ensure_project_python(__file__, is_main=__name__ == "__main__")
+
 import pytest
 
 from app.core.config import Settings
@@ -33,3 +43,7 @@ def test_settings_accept_strong_secrets() -> None:
 
     assert settings.jwt_secret.startswith("test-secret")
     assert settings.database_url.startswith("sqlite")
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_current_test_file(__file__))

@@ -1,3 +1,13 @@
+from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.tests._direct import ensure_project_python, run_current_test_file
+
+ensure_project_python(__file__, is_main=__name__ == "__main__")
+
 from fastapi.testclient import TestClient
 
 from app.tests.support import login, provision_tenant
@@ -419,3 +429,7 @@ def test_imports_expose_external_hotel_plan(client: TestClient) -> None:
     assert payload["adapter_id"] == "external-hotel-rent-mongo"
     assert payload["vertical_pack"] == "hotel"
     assert payload["entity_count"] > 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_current_test_file(__file__))

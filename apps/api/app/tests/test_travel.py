@@ -1,3 +1,13 @@
+from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.tests._direct import ensure_project_python, run_current_test_file
+
+ensure_project_python(__file__, is_main=__name__ == "__main__")
+
 from fastapi.testclient import TestClient
 
 from app.tests.support import login, provision_tenant
@@ -120,3 +130,7 @@ def test_travel_pack_supports_packages_departures_and_leads(client: TestClient) 
     assert overview_response.json()["lead_pipeline"]["qualified"] == 1
     assert adapter_response.json()["adapter_id"] == "legacy-kalpzero-travel"
     assert any(event["event_name"] == "travel.lead.updated" for event in outbox_response.json()["events"])
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_current_test_file(__file__))

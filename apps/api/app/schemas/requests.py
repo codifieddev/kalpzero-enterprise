@@ -23,6 +23,12 @@ class MagicLoginRequest(BaseModel):
     user_id: str
 
 
+class SendWhatsAppCodeRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    sender_mobile_number: str = Field(min_length=8, max_length=32)
+    receiver_mobile_number: str = Field(min_length=8, max_length=32)
+
+
 class CreateAgencyRequest(BaseModel):
     slug: str = Field(min_length=3, max_length=120)
     name: str = Field(min_length=2, max_length=255)

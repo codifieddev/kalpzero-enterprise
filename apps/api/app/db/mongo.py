@@ -327,6 +327,8 @@ def describe_runtime_document_store(settings: Settings) -> dict[str, object]:
 def _drop_test_mongo_databases(settings: Settings) -> None:
     if settings.env not in {"test", "testing"}:
         return
+    if settings.runtime_doc_store_mode != "mongo":
+        return
 
     base_runtime_db = _normalize_mongo_name_segment(settings.runtime_mongo_db)
     tenant_prefix = f"{base_runtime_db}__tenant__"

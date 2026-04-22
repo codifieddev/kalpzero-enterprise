@@ -1,3 +1,13 @@
+from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.tests._direct import ensure_project_python, run_current_test_file
+
+ensure_project_python(__file__, is_main=__name__ == "__main__")
+
 from app.core.config import Settings
 from app.db.mongo import build_runtime_database_name
 from app.db.session import _normalize_database_url
@@ -39,3 +49,7 @@ def test_build_runtime_database_name_normalizes_tenant_slug() -> None:
     assert build_runtime_database_name(settings, tenant_slug="Tenant Demo / Prime") == (
         "kalpzero_runtime__tenant__tenant_demo_prime"
     )
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_current_test_file(__file__))

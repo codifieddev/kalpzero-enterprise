@@ -1,3 +1,13 @@
+from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.tests._direct import ensure_project_python, run_current_test_file
+
+ensure_project_python(__file__, is_main=__name__ == "__main__")
+
 from fastapi.testclient import TestClient
 
 from app.tests.support import login, provision_tenant
@@ -1204,3 +1214,7 @@ def test_hotel_pack_materializes_property_content_into_public_stay_page(client: 
     assert "hotel-amenities" in block_ids
     assert "hotel-nearby" in block_ids
     assert any(card["title"] == "KalpZero Heritage House" for card in payload["discovery"]["cards"])
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_current_test_file(__file__))

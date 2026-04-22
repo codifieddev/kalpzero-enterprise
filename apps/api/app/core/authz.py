@@ -50,6 +50,7 @@ PERMISSION_REGISTRY: dict[str, str] = {
     "publishing.pages.manage": "Create and publish runtime pages.",
     "publishing.discovery.read": "Read discovery and public site materializations.",
     "publishing.discovery.manage": "Update discovery and public site materializations.",
+    "messaging.whatsapp.compose": "Generate manual-send WhatsApp message payloads and links.",
     "ai.runtime.read": "Read AI runtime policies and usage.",
 }
 
@@ -98,6 +99,7 @@ ROLE_GRANTS: dict[str, set[str]] = {
         "publishing.pages.manage",
         "publishing.discovery.read",
         "publishing.discovery.manage",
+        "messaging.whatsapp.compose",
         "ai.runtime.read",
     },
     "operations_manager": {
@@ -129,6 +131,7 @@ ROLE_GRANTS: dict[str, set[str]] = {
         "publishing.blueprints.read",
         "publishing.pages.read",
         "publishing.discovery.read",
+        "messaging.whatsapp.compose",
     },
     "auditor": {
         "platform.registry.read",

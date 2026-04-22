@@ -1,3 +1,13 @@
+from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.tests._direct import ensure_project_python, run_current_test_file
+
+ensure_project_python(__file__, is_main=__name__ == "__main__")
+
 from fastapi.testclient import TestClient
 
 from app.tests.support import login, provision_tenant
@@ -1414,3 +1424,7 @@ def test_commerce_return_validation_blocks_quantity_beyond_delivered_and_support
     )
     assert invalid_return_response.status_code == 409
     assert "delivered quantity available for return" in invalid_return_response.json()["detail"]
+
+
+if __name__ == "__main__":
+    raise SystemExit(run_current_test_file(__file__))

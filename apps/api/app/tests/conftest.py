@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 
@@ -26,6 +27,54 @@ def _set_default_env(db_path: Path) -> None:
     os.environ["KALPZERO_PUBLIC_API_URL"] = "http://localhost:8000"
 
 
+def _redact_headers(headers: dict[str, object] | None) -> dict[str, object]:
+    if not headers:
+        return {}
+
+    redacted: dict[str, object] = {}
+    for key, value in headers.items():
+        if key.lower() == "authorization" and isinstance(value, str) and len(value) > 20:
+            redacted[key] = f"{value[:16]}..."
+        else:
+            redacted[key] = value
+    return redacted
+
+
+def _attach_verbose_http_logging(test_client: TestClient) -> None:
+    if os.environ.get("KALPZERO_TEST_VERBOSE_HTTP") != "1":
+        return
+
+    original_request = test_client.request
+
+    def verbose_request(method: str, url: str, *args, **kwargs):
+        print(f"\n>>> {method.upper()} {url}")
+        if kwargs.get("params"):
+            print("params:", json.dumps(kwargs["params"], indent=2, default=str))
+        if kwargs.get("headers"):
+            print("headers:", json.dumps(_redact_headers(kwargs["headers"]), indent=2, default=str))
+        if "json" in kwargs and kwargs["json"] is not None:
+            print("json:", json.dumps(kwargs["json"], indent=2, default=str))
+
+        response = original_request(method, url, *args, **kwargs)
+
+        print(f"<<< {response.status_code} {url}")
+        content_type = response.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                print(json.dumps(response.json(), indent=2, default=str))
+            except ValueError:
+                print(response.text)
+        else:
+            body = response.text
+            if len(body) > 1200:
+                body = f"{body[:1200]}... [truncated]"
+            print(body)
+
+        return response
+
+    test_client.request = verbose_request  # type: ignore[method-assign]
+
+
 @pytest.fixture
 def client(tmp_path: Path) -> TestClient:
     db_path = tmp_path / "kalpzero-enterprise-test.db"
@@ -37,6 +86,7 @@ def client(tmp_path: Path) -> TestClient:
     from app.main import create_app
 
     with TestClient(create_app()) as test_client:
+        _attach_verbose_http_logging(test_client)
         yield test_client
 
     get_settings.cache_clear()

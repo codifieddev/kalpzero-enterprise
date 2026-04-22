@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import ai, auth, commerce, commerce_cart, forms, health, hotel, imports, platform, publishing, travel
+from app.api.routes import ai, auth, commerce, commerce_cart, forms, health, hotel, imports, messaging, platform, publishing, travel
 
 api_router = APIRouter()
 api_router.include_router(health.router, tags=["health"])
@@ -13,4 +13,5 @@ api_router.include_router(commerce_cart.router, prefix="/commerce/cart", tags=["
 api_router.include_router(travel.router, prefix="/travel", tags=["travel"])
 api_router.include_router(hotel.router, prefix="/hotel", tags=["hotel"])
 api_router.include_router(publishing.router, prefix="/publishing", tags=["publishing"])
+api_router.include_router(messaging.router, prefix="/messaging", tags=["messaging"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
