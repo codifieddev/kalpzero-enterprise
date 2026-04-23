@@ -22,118 +22,38 @@ pm2 logs kalpzero-web
 - GitHub repo: `https://github.com/hideepakrai/kalpzero-enterprise.git`
 - Deploy branch: `main`
 
-## Auto Pull / Auto Deploy
-
-- Primary watcher runs under PM2:
-  - `kalpzero-auto-deploy-debug`
-- PM2 watcher command:
-  - `pm2 start /mnt/data/kalpzero-enterprise/scripts/auto-deploy-debug.sh --name kalpzero-auto-deploy-debug --interpreter bash -- --interval=60`
-- Cron for this repo is intentionally disabled now so only one watcher controls deploy checks.
-- Script that checks whether a new commit exists on `origin/main`:
-  - `scripts/auto-deploy-live.sh`
-- Foreground debug watcher script:
-  - `scripts/auto-deploy-debug.sh`
-- Script that performs the actual deploy when a new commit is found:
-  - `scripts/deploy-live.sh`
+- Production deploys are handled by GitHub Actions workflow `.github/workflows/deploy-live.yml`.
+- The workflow triggers on pushes to `main` and on manual `workflow_dispatch`.
+- The self-hosted runner on this server executes the deploy steps against `/mnt/data/kalpzero-enterprise`.
+- `scripts/auto-deploy-live.sh` is the commit-check wrapper used by the workflow.
+- `scripts/deploy-live.sh` is the actual deploy script. It can force-sync the checkout to `origin/main`, install dependencies, build the workspace, restart `kalpzero-api` and `kalpzero-web`, and run health checks.
 - Auto-deploy log file:
   - `/tmp/kalpzero-auto-deploy.log`
 - Auto-deploy lock file:
   - `/tmp/kalpzero-auto-deploy.lock`
 
-## How To Check The Running Watcher
+Important:
 
-### Main live terminal command
+- There is no cron-based production deploy for this repo.
+- There is no PM2 watcher for production deploys.
+- The old `kalpzero-auto-deploy-debug` process has been removed. Use GitHub Actions as the source of truth.
+- `scripts/auto-deploy-debug.sh` remains available only as a manual foreground diagnostic helper.
 
-```bash
-pm2 logs kalpzero-auto-deploy-debug
-```
+## How To Check The Live Deploy System
 
-- This is the main command to watch fetch, SHA comparison, and deploy output live.
-- Leave it open in a terminal if you want to monitor auto-pull behavior continuously.
-
-### Check watcher status
+### Check the latest GitHub Actions deploy run
 
 ```bash
-pm2 list
-pm2 show kalpzero-auto-deploy-debug
+gh run list --repo hideepakrai/kalpzero-enterprise --workflow deploy-live.yml --limit 5
 ```
 
-### Check PM2 log files directly
+### Inspect a specific deploy run
 
 ```bash
-tail -f /home/dzinly/.pm2/logs/kalpzero-auto-deploy-debug-out.log
-tail -f /home/dzinly/.pm2/logs/kalpzero-auto-deploy-debug-error.log
+gh run view <run-id> --repo hideepakrai/kalpzero-enterprise
 ```
 
-## How To Check The Cron Job
-
-Cron is disabled for this repo on purpose.
-
-### Check that the cron entry exists
-
-```bash
-crontab -l
-```
-
-Expected result:
-
-```bash
-no line for /mnt/data/kalpzero-enterprise/scripts/auto-deploy-live.sh
-```
-
-### Check that the cron service itself is running
-
-```bash
-systemctl status cron
-```
-
-### If you want to confirm cron is not handling this repo anymore
-
-```bash
-crontab -l | grep auto-deploy-live.sh
-```
-
-- This should return no output.
-- The deploy checks should now come from the PM2 watcher instead of cron.
-
-### Quick one-line checks
-
-```bash
-pm2 logs kalpzero-auto-deploy-debug --lines 50
-tail -n 20 /home/dzinly/.pm2/logs/kalpzero-auto-deploy-debug-out.log
-```
-
-### Run the auto-deploy checker in a terminal with live debug output
-
-```bash
-cd /mnt/data/kalpzero-enterprise
-./scripts/auto-deploy-debug.sh
-```
-
-- This keeps running in the terminal.
-- It shows each check, local SHA, remote SHA, and whether a new commit is being pulled.
-- If a deploy starts, you will see the pull/build/restart logs directly in the same terminal.
-- Stop it with `Ctrl+C`.
-
-### Run only one debug check
-
-```bash
-cd /mnt/data/kalpzero-enterprise
-./scripts/auto-deploy-debug.sh --once
-```
-
-### Run debug checks faster than cron
-
-```bash
-cd /mnt/data/kalpzero-enterprise
-./scripts/auto-deploy-debug.sh --interval=15
-```
-
-- This is useful when you want to test push/pull behavior quickly without waiting a full minute.
-
-## How To Check If The Latest Commit Was Pulled
-
-### Check the auto-deploy log
+### Watch the local deploy log
 
 ```bash
 tail -n 50 /tmp/kalpzero-auto-deploy.log
@@ -141,18 +61,40 @@ tail -n 50 /tmp/kalpzero-auto-deploy.log
 
 Useful log messages:
 
-- `No new commit detected` means the server already matches `origin/main`.
-- `New remote commit detected` means a newer commit was found on GitHub and deploy should start.
-- `Local repo is ahead of origin/main` means this folder already has commits that GitHub does not have yet, so there is nothing to pull.
-- `Local and remote have diverged` means manual intervention is required before auto-deploy should continue.
-- `Auto-deploy completed` means pull/build/restart finished successfully.
+- `No new commit detected` means the checkout already matches `origin/main`.
+- `Repository differs from remote. Force-sync deployment will run.` means the workflow is about to sync and deploy.
+- `Repository now at commit` shows the deployed SHA.
+- `Deploy completed successfully` means install, build, restart, and health checks passed.
 
-Important note:
+### Check the live PM2 apps
 
-- If you ran `git push origin main` from `/mnt/data/kalpzero-enterprise` itself, this folder already has the latest commit.
-- In that case the cron log will usually show `No new commit detected`, because there is nothing left to pull.
+```bash
+pm2 list
+pm2 show kalpzero-api
+pm2 show kalpzero-web
+pm2 logs kalpzero-api --lines 50
+pm2 logs kalpzero-web --lines 50
+```
 
-### Compare local commit with remote commit
+### Confirm no cron deploy exists
+
+```bash
+crontab -l | grep auto-deploy-live.sh
+```
+
+- This should return no output.
+
+### Manual foreground debug check
+
+```bash
+cd /mnt/data/kalpzero-enterprise
+./scripts/auto-deploy-debug.sh --once
+```
+
+- This is only for debugging the deploy scripts locally.
+- It is not the production auto-deploy path.
+
+### Compare the deployed commit with the remote branch
 
 ```bash
 cd /mnt/data/kalpzero-enterprise
@@ -161,8 +103,8 @@ git rev-parse HEAD
 git rev-parse FETCH_HEAD
 ```
 
-- If both commit SHAs are the same, the latest commit is already pulled.
-- If they are different, the server is behind the remote branch.
+- If both SHAs match, the live checkout is already on the latest `origin/main` commit.
+- If they differ, the workflow either has not run yet or failed mid-deploy.
 
 ### Check the current local commit quickly
 
@@ -276,14 +218,21 @@ pm2 save
 
 ## Manual Deploy
 
-If you want to deploy immediately without waiting for the watcher:
+If you want to deploy immediately from the current checkout:
 
 ```bash
 cd /mnt/data/kalpzero-enterprise
 ./scripts/deploy-live.sh
 ```
 
-If you only want to run the commit check wrapper manually:
+If the checkout is already correct and you only want rebuild/restart without another git pull:
+
+```bash
+cd /mnt/data/kalpzero-enterprise
+./scripts/deploy-live.sh --skip-pull
+```
+
+If you only want to run the commit-check wrapper manually:
 
 ```bash
 cd /mnt/data/kalpzero-enterprise
