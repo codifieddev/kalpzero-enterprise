@@ -20,6 +20,8 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const AUTH_USER_STORAGE_KEY = "kalp_auth_user";
+const ACTIVE_TENANT_COOKIE_KEY = "kalp_active_tenant";
+const ACTIVE_TENANT_COOKIE_MAX_AGE = 60 * 60 * 8;
 
 function readStoredToken() {
   if (typeof window === "undefined") {
@@ -74,6 +76,24 @@ function writeStoredAuthUser(user: AuthUser | null) {
   window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
 }
 
+function writeActiveTenantCookie(tenantId: string | null | undefined) {
+  if (typeof document === "undefined" || typeof window === "undefined") {
+    return;
+  }
+
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  const normalizedTenant = tenantId?.trim() ?? "";
+
+  if (!normalizedTenant) {
+    document.cookie = `${ACTIVE_TENANT_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+    return;
+  }
+
+  document.cookie = `${ACTIVE_TENANT_COOKIE_KEY}=${encodeURIComponent(
+    normalizedTenant
+  )}; Path=/; Max-Age=${ACTIVE_TENANT_COOKIE_MAX_AGE}; SameSite=Lax${secure}`;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [token, setToken] = useState<string | null>(null);
@@ -89,6 +109,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(null);
       setStatus("anonymous");
       writeStoredAuthUser(null);
+      writeActiveTenantCookie(null);
       dispatch(clearAuth());
       return null;
     }
@@ -100,8 +121,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus("authenticated");
 
       const userData: AuthUser = {
-        id: nextSession.email,
-        name: nextSession.name,
+        id: nextSession.id,
+        name: nextSession.name ?? undefined,
         email: nextSession.email,
         role: nextSession.role,
         tenant_id: nextSession.tenant_id,
@@ -109,11 +130,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
       dispatch(setAuthUser(userData));
       writeStoredAuthUser(userData);
+      writeActiveTenantCookie(nextSession.tenant_id);
 
       return nextSession;
     } catch {
       writeStoredToken(null);
       writeStoredAuthUser(null);
+      writeActiveTenantCookie(null);
       setToken(null);
       setSession(null);
       setStatus("anonymous");
@@ -133,10 +156,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (payload: LoginPayload) => {
     const response = await loginRequest(payload);
 
-    console.log("update logion",response)
     const userData: AuthUser = {
-      id: response.session?.email ?? "",
-      name: response.session?.name ?? "",
+      id: response.session?.id ?? "",
+      name: response.session?.name ?? undefined,
       email: response.session?.email ?? "",
       role: response.session?.role ?? "",
       tenant_id: response.session?.tenant_id ?? "",
@@ -149,14 +171,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(response.access_token);
     setSession(response.session);
     setStatus("authenticated");
+    writeActiveTenantCookie(response.session?.tenant_id);
     return response.session;
   }, [dispatch]);
 
   const magicLogin = useCallback(async (userId: string) => {
     const response = await magicLoginRequest(userId);
     const userData: AuthUser = {
-      id: response.session?.email ?? "",
-      name: response.session?.name ?? "",
+      id: response.session?.id ?? "",
+      name: response.session?.name ?? undefined,
       email: response.session?.email ?? "",
       role: response.session?.role ?? "",
       tenant_id: response.session?.tenant_id ?? "",
@@ -169,12 +192,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(response.access_token);
     setSession(response.session);
     setStatus("authenticated");
+    writeActiveTenantCookie(response.session?.tenant_id);
     return response.session;
   }, [dispatch]);
 
   const logout = useCallback(() => {
     writeStoredToken(null);
     writeStoredAuthUser(null);
+    writeActiveTenantCookie(null);
     setToken(null);
     setSession(null);
     setStatus("anonymous");

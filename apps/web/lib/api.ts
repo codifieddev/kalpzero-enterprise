@@ -1,8 +1,9 @@
 export interface SessionDto {
+  id: string;
   email: string;
   tenant_id: string;
   role: string;
-  name: string;
+  name: string | null;
   isTenantOwner: boolean;
 }
 

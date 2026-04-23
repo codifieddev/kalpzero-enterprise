@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         return {
             email: rootAuth.session.email,
-            name: rootAuth.session.name,
+            name: rootAuth.session.name ?? rootAuth.session.email,
             role: rootAuth.session.role,
             tenantKey: rootAuth.session.tenant_id,
             subscriptionLevel: 'pro', // Fallback for now
