@@ -20,6 +20,22 @@ def test_health_routes_are_public(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_swagger_docs_use_local_openapi_path_for_internal_host(client: TestClient) -> None:
+    response = client.get("/docs")
+
+    assert response.status_code == 200
+    assert 'url: \'/openapi.json\'' in response.text
+    assert 'oauth2RedirectUrl: window.location.origin + \'/docs/oauth2-redirect\'' in response.text
+
+
+def test_swagger_docs_use_api_prefixed_openapi_path_for_public_host(client: TestClient) -> None:
+    response = client.get("/docs", headers={"Host": "kalptree.xyz"})
+
+    assert response.status_code == 200
+    assert 'url: \'/api/openapi.json\'' in response.text
+    assert 'oauth2RedirectUrl: window.location.origin + \'/api/docs/oauth2-redirect\'' in response.text
+
+
 def test_auth_me_returns_current_session(client: TestClient) -> None:
     token = login(client, email="founder@kalpzero.com")
 
