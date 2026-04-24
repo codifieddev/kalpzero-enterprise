@@ -69,7 +69,7 @@ export const fetchProductById = createAsyncThunk<
       throw new Error(errorData.error || "Failed to fetch product");
     }
     const result = await response.json();
-    return result.data as Product;
+    return result as Product;
   } catch (error: any) {
     return rejectWithValue(error.message || "Failed to fetch product");
   }

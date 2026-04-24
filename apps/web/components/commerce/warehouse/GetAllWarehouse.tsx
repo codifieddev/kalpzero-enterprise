@@ -1,32 +1,31 @@
-"use client";
+"use client"
 
-import { useEffect, useRef } from "react";
-import { useDispatch } from "react-redux";
-import { fetchAttributes } from "@/hook/slices/commerce/attribute/attributeThunk";
-import { useSelector } from "react-redux";
+import { fetchWarehouses } from "@/hook/slices/commerce/warehouse/WarehouseThunk";
 import { AppDispatch, RootState } from "@/hook/store/store";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
 
 
-export default function GetAllAtribute() {
+export default function GetAllWarehouse() {
     const dispatch = useDispatch<AppDispatch>();
     const pathName = usePathname();
     const segment = pathName.split("/")[1];
-    console.log("segment", segment);
-   const isApi= useRef<boolean>(false);
+
+    const isApi = useRef<boolean>(false);
     const { authUser } = useSelector((state: RootState) => state.auth);
     const { currentTenant } = useSelector((state: RootState) => state.tenant);
-    const { isFetchedAttributes } = useSelector((state: RootState) => state.attribute);
+    const { isFetchedWarehouses } = useSelector((state: RootState) => state.warehouse);
 
     useEffect(() => {
-        if (!isFetchedAttributes &&
+        if (!isFetchedWarehouses &&
              segment === "commerce" &&
             authUser?.access_token &&
             currentTenant?.mongo_db_name &&
             !isApi.current
             ) {
             isApi.current = true;
-            dispatch(fetchAttributes(
+            dispatch(fetchWarehouses(
                 {
                     'x-tenant-db': currentTenant.mongo_db_name,
                     auth_token: authUser.access_token,
@@ -35,7 +34,8 @@ export default function GetAllAtribute() {
             }else{
             isApi.current = false;
         }
-    }, [dispatch, currentTenant, isFetchedAttributes, authUser, segment]);
-
-return null;
+    }, [dispatch, currentTenant, isFetchedWarehouses, authUser, segment]);
+    return (
+        null
+    );
 }

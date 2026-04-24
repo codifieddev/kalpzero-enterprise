@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
 import { useSelector } from "react-redux";
-import { AppDispatch, RootState } from "@/lib/store";
+import { AppDispatch, RootState } from "@/hook/store/store";
 import { usePathname } from "next/navigation";
 import { fetchCategories } from "@/hook/slices/commerce/category/categoryThunk";
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { AppDispatch, RootState } from "@/lib/store";
+import { AppDispatch, RootState } from "@/hook/store/store";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";

@@ -47,6 +47,16 @@ export const commerce_vertical={
           "label": "Brand",
           "key": "brand",
           "route": "/commerce/brand"
+        },
+        {
+          "label": "Vendor",
+          "key": "vendor",
+          "route": "/commerce/vendor"
+        },
+        {
+          "label": "Warehouse",
+          "key": "warehouse",
+          "route": "/commerce/warehouse"
         }
       ]
     },
