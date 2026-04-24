@@ -1,0 +1,62 @@
+export const metadata = {
+  title: "Business Blueprint Runtime",
+  description:
+    "Understand the Business Blueprint contract that drives routes, modules, and theme behavior across Kalp."
+}
+
+<div className="text-[11px] font-black uppercase tracking-[0.32em] text-blue-700">Core Concepts</div>
+
+# Business Blueprint runtime
+
+The Business Blueprint is the contract that tells Kalp how a tenant should behave across public and admin surfaces. Instead of hardcoding tenant-specific branches, the platform reads blueprint decisions at runtime.
+
+<h2 id="blueprint-contract">Blueprint contract</h2>
+
+The blueprint carries the high-value behavior decisions for a tenant.
+
+<DocsCardGrid>
+  <DocsCard title="Vocabulary">
+    Tenant-specific labels and business language that shape how the workspace talks about entities and workflows.
+  </DocsCard>
+  <DocsCard title="Navigation and routes">
+    Public and admin routes are materialized from blueprint decisions instead of being copied per customer.
+  </DocsCard>
+  <DocsCard title="Theme tokens">
+    Brand colors, visual treatment, and design direction can vary without replacing the shared rendering layer.
+  </DocsCard>
+  <DocsCard title="Capabilities">
+    Enabled modules, widgets, and options decide what the tenant can access inside the operator shell.
+  </DocsCard>
+</DocsCardGrid>
+
+<h2 id="modules-and-navigation">Modules and navigation</h2>
+
+The blueprint controls what a tenant sees. A commerce tenant and a hotel tenant may share the same app, but not the same active modules.
+
+- Module enablement affects sidebar navigation.
+- Capability definitions affect access and configuration.
+- Feature flags allow controlled rollout without changing the tenant’s codebase.
+- Blueprint choices can eventually extend to mobile and other operator surfaces.
+
+<h2 id="theme-and-components">Theme and components</h2>
+
+Kalp uses theme tokens and component registries to let businesses look different while still rendering through shared components.
+
+This is the key distinction:
+
+- shared rendering engine
+- tenant-specific tokens, content, and route definitions
+
+That combination gives each business a distinct presence without making the platform unmaintainable.
+
+<h2 id="why-no-forks">Why no forks</h2>
+
+Forking the platform for every tenant would slow shipping, multiply operational risk, and make security fixes harder to distribute. The blueprint model keeps Kalp extensible while still protecting the shared system.
+
+<blockquote>
+  The platform changes once, and many tenants benefit. The tenant changes once, and only that tenant’s runtime behavior changes.
+</blockquote>
+
+<Callout title="Next read" tone="success">
+  Continue to <a href="/docs/core-concepts/runtime-documents-and-publishing">Runtime Documents and Publishing</a> to see how blueprint decisions are combined with runtime content.
+</Callout>

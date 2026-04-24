@@ -1,0 +1,70 @@
+export const metadata = {
+  title: "Agency and Tenant Model",
+  description:
+    "Learn how agencies, tenants, platform admins, and tenant admins are organized in Kalp."
+}
+
+<div className="text-[11px] font-black uppercase tracking-[0.32em] text-blue-700">Getting Started</div>
+
+# Agency and tenant model
+
+Kalp organizes the platform in layers. Platform operators manage the control plane, agencies group business ownership and infrastructure choices, and tenants represent the actual business runtime.
+
+<h2 id="control-plane">Control plane</h2>
+
+The control plane is where Kalp keeps the canonical system records: agencies, tenants, users, permissions, vertical readiness, onboarding state, and operational rules.
+
+- Platform admins work from the platform shell.
+- Tenant creation is gated by readiness checks and approved verticals.
+- Auth and permission checks fail closed by default.
+- Shared operational data is kept relational so tenancy and governance stay consistent.
+
+<DocsCardGrid>
+  <DocsCard title="Platform Admin">
+    Creates agencies, provisions tenants, validates readiness, and manages cross-tenant operations.
+  </DocsCard>
+  <DocsCard title="Tenant Admin">
+    Operates one business workspace, manages modules, and works inside tenant-scoped runtime data.
+  </DocsCard>
+</DocsCardGrid>
+
+<h2 id="agency-layer">Agency layer</h2>
+
+An agency is the management boundary above tenants. It can own multiple businesses and eventually influence domain rules, infrastructure preferences, and governance behavior.
+
+- Agencies group related tenants.
+- Agencies can own resources and infrastructure profiles.
+- Agency operators can manage many businesses without leaving the shared platform.
+- Onboarding starts by creating an agency, then creating one or more tenants under it.
+
+<h2 id="tenant-layer">Tenant layer</h2>
+
+A tenant is the actual business instance. It receives a slug, display name, vertical packs, feature flags, runtime database, seeded documents, and publishing state.
+
+<InlineBadge>Tenant outputs</InlineBadge>
+
+- tenant-scoped runtime database bootstrap
+- baseline blueprint and public page seeding
+- discovery document seeding
+- optional business website repo plus first Vercel deployment
+
+The tenant model is what lets Kalp keep one platform while still delivering tenant-specific public pages and operator experiences.
+
+<h2 id="operator-flow">Operator flow</h2>
+
+The typical operator path is straightforward:
+
+1. Log in as a platform admin.
+2. Create or select an agency.
+3. Run onboarding readiness.
+4. Create a tenant with slug, display name, infra mode, and vertical pack.
+5. Let the platform seed runtime data and optionally provision the business website repo and Vercel project.
+6. Hand the business over to tenant admins and operators.
+
+<Callout title="Operational note">
+  Kalp treats onboarding as a control-plane workflow, not just a CRUD insert. That is why readiness, provisioning, runtime seeding, and website deployment all sit in the same lifecycle.
+</Callout>
+
+<Callout title="Next read" tone="success">
+  Continue to <a href="/docs/core-concepts/business-blueprint-runtime">Business Blueprint Runtime</a> to see how tenant behavior is shaped after provisioning.
+</Callout>

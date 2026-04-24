@@ -1,0 +1,65 @@
+export const metadata = {
+  title: "Runtime Documents and Publishing",
+  description:
+    "See how storage layers, public runtime payloads, and studio previews work together in Kalp."
+}
+
+<div className="text-[11px] font-black uppercase tracking-[0.32em] text-blue-700">Core Concepts</div>
+
+# Runtime documents and publishing
+
+If the Business Blueprint decides how a tenant behaves, runtime documents decide what the tenant actually publishes. Kalp separates control-plane truth from flexible business content so each layer can do its own job well.
+
+<h2 id="three-layer-storage">Three-layer storage</h2>
+
+Kalp uses a hybrid model so governance and flexibility do not fight each other.
+
+| Layer | Responsibility |
+| --- | --- |
+| Postgres | Control plane, tenancy, transactional truth, audit, and structured operational records |
+| MongoDB | Runtime documents, page content, discovery content, AI knowledge, and staging payloads |
+| Redis | Cache, queueing, and operational coordination |
+
+<Callout title="Why this matters" tone="brand">
+  Relational control-plane data stays strict. Flexible publishing payloads stay document-shaped. Kalp does not force both jobs into one storage model.
+</Callout>
+
+<h2 id="public-runtime">Public runtime</h2>
+
+The public tenant route is served from the shared app route at `/[tenantSlug]/[[...pageSlug]]`. That route resolves tenant runtime payloads and renders the right page for that business.
+
+- A tenant slug selects the business context.
+- Page slug selects the public page inside that tenant.
+- Runtime payloads determine blocks, theme tokens, and discovery content.
+- The public route stays shared even when each business page looks different.
+
+<h2 id="admin-preview">Admin preview</h2>
+
+Studio and admin preview surfaces let operators inspect how a tenant blueprint will behave without creating a separate app.
+
+- Studio preview is available under `/studio/[tenantSlug]`.
+- Platform and tenant shells stay in the same Next.js codebase.
+- Preview uses the same contract family as public rendering, which reduces mismatch between editing and delivery.
+
+<h2 id="publishing-cycle">Publishing cycle</h2>
+
+The publishing cycle is usually:
+
+1. onboarding seeds the first runtime collections
+2. the tenant receives a baseline blueprint and public pages
+3. operators edit content and configuration
+4. public runtime payloads are resolved and rendered from the shared app
+5. discovery and SEO-oriented surfaces can be materialized from the same runtime documents
+
+<DocsCardGrid>
+  <DocsCard title="One route shell">
+    Public pages use one tenant-aware route instead of tenant-specific route trees.
+  </DocsCard>
+  <DocsCard title="One preview workflow">
+    Studio preview keeps editing and runtime behavior aligned.
+  </DocsCard>
+</DocsCardGrid>
+
+<Callout title="Next read" tone="success">
+  Continue to <a href="/docs/operations/business-website-provisioning">Business Website Provisioning</a> for the onboarding automation that creates a repo and first deployment.
+</Callout>
