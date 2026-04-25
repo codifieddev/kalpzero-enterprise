@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { useRouter } from "next/navigation";
 import { useDispatch } from "react-redux";
-import { AppDispatch } from "@/lib/store";
+import { AppDispatch } from "@/hook/store/store";
 import { setCurrentProduct } from "@/hook/slices/commerce/products/ProductSlice";
 
 interface ShowProductTableProps {

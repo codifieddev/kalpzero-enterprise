@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
-import { AppDispatch, RootState } from "@/lib/store";
+import { AppDispatch, RootState } from "@/hook/store/store";
 import { fetchProductById } from "@/hook/slices/commerce/products/ProductThunk";
 import {
   Package,
@@ -19,6 +19,10 @@ import {
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import GetTenant from "@/components/adminLayout/GetTenant";
+import GetAllAtribute from "@/components/commerce/attribute/GetAllAtribute";
+import GetAllCategories from "@/components/commerce/categories/GetAllCategories";
+import GetAllProducts from "@/components/commerce/products/GetAllProducts";
 
 export default function ProductDetailPage() {
   const params = useParams();
@@ -72,7 +76,7 @@ export default function ProductDetailPage() {
           </p>
         </div>
         <Link
-          href="/commerce/products"
+          href="/commerce/product"
           className="h-12 px-10 bg-slate-900 border border-white/10 text-white font-black text-[10px] uppercase tracking-widest flex items-center gap-3 hover:bg-slate-800 transition-all"
         >
           <ArrowLeft size={16} /> Return to Inventory
@@ -82,7 +86,12 @@ export default function ProductDetailPage() {
   }
 
   return (
+    
     <>
+         <GetTenant />
+            <GetAllAtribute />
+            <GetAllCategories />
+            <GetAllProducts />
       <div className="min-h-screen bg-slate-950 text-white selection:bg-amber-500/30">
         {/* Tactical Header Navigation */}
         <div className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-white/5 px-8 h-20 flex items-center justify-between">
@@ -247,6 +256,7 @@ export default function ProductDetailPage() {
         </footer>
       </div>
     </>
+    
   );
 }
 
