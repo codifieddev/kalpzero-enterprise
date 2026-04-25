@@ -117,6 +117,7 @@ def serialize_tenant(
     settings: Settings | None = None,
     bootstrap: dict[str, object] | None = None,
     website_deployment=None,
+    website_domains: list[object] | None = None,
 ) -> dict[str, object]:
     vertical_packs = tenant.vertical_packs if isinstance(tenant.vertical_packs, list) else [tenant.vertical_packs]
     payload = {
@@ -147,7 +148,7 @@ def serialize_tenant(
             **describe_tenant_runtime_document_store(settings, tenant_slug=tenant.slug),
             "bootstrap": resolved_bootstrap,
         }
-    payload["website_deployment"] = serialize_website_deployment(website_deployment)
+    payload["website_deployment"] = serialize_website_deployment(website_deployment, domains=website_domains)
     return payload
 
 
@@ -354,6 +355,7 @@ def create_tenant(
     vertical_pack: str,
     business_type: str | None,
     admin_email: str | None,
+    primary_domains: list[str] | None,
     feature_flags: list[str],
     dedicated_profile_id: str | None,
 ) -> dict[str, object]:
@@ -445,7 +447,9 @@ def create_tenant(
         tenant=tenant,
         actor_user_id=actor_user_id,
         admin_email=admin_email,
+        primary_domains=primary_domains,
     )
+    website_domains = platform_repository.list_tenant_website_domains(db, tenant_id=str(tenant.id))
     return serialize_tenant(
         tenant,
         settings=settings,
@@ -454,6 +458,7 @@ def create_tenant(
             **runtime_bootstrap,
         },
         website_deployment=website_deployment,
+        website_domains=website_domains,
     )
 
 
@@ -532,11 +537,13 @@ def _serialize_tenant_with_details(
     bootstrap: dict[str, object] | None = None,
 ) -> dict[str, object]:
     website_deployment = platform_repository.get_tenant_website_deployment(db, tenant_id=str(tenant.id))
+    website_domains = platform_repository.list_tenant_website_domains(db, tenant_id=str(tenant.id))
     return serialize_tenant(
         tenant,
         settings=settings,
         bootstrap=bootstrap,
         website_deployment=website_deployment,
+        website_domains=website_domains,
     )
 
 

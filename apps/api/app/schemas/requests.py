@@ -57,6 +57,10 @@ class CreateTenantRequest(BaseModel):
     vertical_pack: str = Field(min_length=2, max_length=32)
     business_type: str | None = None
     admin_email: str | None = None
+    primary_domains: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("primary_domains", "primaryDomain"),
+    )
     feature_flags: list[str] = Field(default_factory=list)
     dedicated_profile_id: str | None = None
 

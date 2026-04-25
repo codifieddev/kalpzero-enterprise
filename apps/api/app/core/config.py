@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,6 +43,13 @@ class Settings(BaseSettings):
     github_repo_prefix: str = Field(default="kalp-biz", alias="KALPZERO_GITHUB_REPO_PREFIX")
     github_default_branch: str = Field(default="main", alias="KALPZERO_GITHUB_DEFAULT_BRANCH")
     website_repo_private: bool = Field(default=True, alias="KALPZERO_WEBSITE_REPO_PRIVATE")
+    website_provider: str = Field(default="github_vercel", alias="KALPZERO_WEBSITE_PROVIDER")
+    website_root_domain: str | None = Field(default=None, alias="KALPZERO_WEBSITE_ROOT_DOMAIN")
+    website_local_repo_root: str = Field(
+        default="/mnt/data/kalpzero-enterprise/.business-sites",
+        alias="KALPZERO_WEBSITE_LOCAL_REPO_ROOT",
+    )
+    website_public_url_mode: str = Field(default="path", alias="KALPZERO_WEBSITE_PUBLIC_URL_MODE")
     vercel_token: str | None = Field(default=None, alias="KALPZERO_VERCEL_TOKEN")
     vercel_team_id: str | None = Field(default=None, alias="KALPZERO_VERCEL_TEAM_ID")
     vercel_team_slug: str | None = Field(default=None, alias="KALPZERO_VERCEL_TEAM_SLUG")
@@ -76,6 +84,30 @@ class Settings(BaseSettings):
     @property
     def redis_url(self) -> str:
         return self.ops_redis_url
+
+    @field_validator("website_provider")
+    @classmethod
+    def validate_website_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"github_vercel", "github_self_hosted"}:
+            raise ValueError("KALPZERO_WEBSITE_PROVIDER must be github_vercel or github_self_hosted.")
+        return normalized
+
+    @field_validator("website_public_url_mode")
+    @classmethod
+    def validate_website_public_url_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"path", "subdomain"}:
+            raise ValueError("KALPZERO_WEBSITE_PUBLIC_URL_MODE must be path or subdomain.")
+        return normalized
+
+    @property
+    def website_root_host(self) -> str:
+        explicit = (self.website_root_domain or "").strip().lower()
+        if explicit:
+            return explicit
+        parsed = urlparse(self.public_web_url)
+        return parsed.hostname.lower() if parsed.hostname else "kalptree.xyz"
 
 
 @lru_cache

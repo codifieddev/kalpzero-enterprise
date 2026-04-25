@@ -111,6 +111,9 @@ def test_onboarding_readiness_blocks_travel_until_pilot_scope_changes(client: Te
 
 
 def test_platform_admin_can_create_agency_and_tenant(client: TestClient) -> None:
+    from app.core.config import get_settings
+    from app.db.mongo import build_runtime_database_name
+
     platform_token = login(client, email="founder@kalpzero.com")
     agency_response = client.post(
         "/platform/agencies",
@@ -138,8 +141,9 @@ def test_platform_admin_can_create_agency_and_tenant(client: TestClient) -> None
     )
     assert tenant_response.status_code == 201
     tenant_payload = tenant_response.json()
+    expected_database_name = build_runtime_database_name(get_settings(), tenant_slug="enterprise-tenant")
     assert tenant_payload["vertical_packs"] == ["commerce"]
-    assert tenant_payload["runtime_documents"]["database"] == "kalpzero_runtime_test__tenant__enterprise_tenant"
+    assert tenant_payload["runtime_documents"]["database"] == expected_database_name
     assert tenant_payload["runtime_documents"]["bootstrap"]["seeded_document_count"] >= 5
     assert tenant_payload["website_deployment"]["status"] == "disabled"
     assert "KALPZERO_GITHUB_TOKEN" in tenant_payload["website_deployment"]["message"]
@@ -151,7 +155,7 @@ def test_platform_admin_can_create_agency_and_tenant(client: TestClient) -> None
     assert response.status_code == 200
     tenants = response.json()["tenants"]
     assert len(tenants) == 1
-    assert tenants[0]["runtime_documents"]["database"] == "kalpzero_runtime_test__tenant__enterprise_tenant"
+    assert tenants[0]["runtime_documents"]["database"] == expected_database_name
     assert tenants[0]["website_deployment"]["status"] == "disabled"
 
 
@@ -281,6 +285,109 @@ def test_platform_admin_can_provision_business_website_repo_and_vercel_project(
     assert website_deployment["deployment_id"] == "dpl_101"
     assert website_deployment["production_url"] == "https://kalp-biz-vercel-tenant.vercel.app"
     assert website_deployment["message"] == "Business website repo created and the first Vercel production deployment is live."
+
+
+def test_platform_admin_can_provision_business_website_repo_with_self_hosted_runtime(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("KALPZERO_GITHUB_TOKEN", "ghs_test_token")
+    monkeypatch.setenv("KALPZERO_GITHUB_REPO_OWNER", "kalp-sites")
+    monkeypatch.setenv("KALPZERO_GITHUB_TEMPLATE_OWNER", "kalp-templates")
+    monkeypatch.setenv("KALPZERO_GITHUB_TEMPLATE_REPO", "business-site-template")
+    monkeypatch.setenv("KALPZERO_GITHUB_REPO_PREFIX", "kalp-biz")
+    monkeypatch.setenv("KALPZERO_WEBSITE_PROVIDER", "github_self_hosted")
+    monkeypatch.setenv("KALPZERO_PUBLIC_WEB_URL", "https://kalptree.xyz")
+    monkeypatch.setenv("KALPZERO_WEBSITE_ROOT_DOMAIN", "kalptree.xyz")
+    monkeypatch.setenv("KALPZERO_WEBSITE_PUBLIC_URL_MODE", "path")
+
+    from app.core.config import get_settings
+    from app.services import website_provisioning
+
+    get_settings.cache_clear()
+
+    def fake_request(method: str, url: str, *, headers: dict[str, str], payload=None) -> dict[str, object]:
+        if url == "https://api.github.com/repos/kalp-templates/business-site-template/generate":
+            assert method == "POST"
+            assert payload == {
+                "owner": "kalp-sites",
+                "name": "kalp-biz-self-hosted-tenant",
+                "description": "Business website for Self Hosted Tenant",
+                "include_all_branches": False,
+                "private": True,
+            }
+            return {
+                "id": 202,
+                "name": "kalp-biz-self-hosted-tenant",
+                "full_name": "kalp-sites/kalp-biz-self-hosted-tenant",
+                "html_url": "https://github.com/kalp-sites/kalp-biz-self-hosted-tenant",
+                "default_branch": "main",
+            }
+
+        raise AssertionError(f"Unexpected external request: {method} {url}")
+
+    monkeypatch.setattr(website_provisioning, "_request_json", fake_request)
+    monkeypatch.setattr(
+        website_provisioning,
+        "_sync_local_repository_checkout",
+        lambda settings, *, repo_name: f"/tmp/kalp-sites/{repo_name}",
+    )
+
+    platform_token = login(client, email="founder@kalpzero.com")
+    agency_response = client.post(
+        "/platform/agencies",
+        headers={"Authorization": f"Bearer {platform_token}"},
+        json={
+            "slug": "self-hosted-agency",
+            "name": "Self Hosted Agency",
+            "region": "in",
+            "owner_user_id": "founder@kalpzero.com",
+        },
+    )
+    assert agency_response.status_code == 201
+
+    tenant_response = client.post(
+        "/platform/tenants",
+        headers={"Authorization": f"Bearer {platform_token}"},
+        json={
+            "agency_slug": "self-hosted-agency",
+            "slug": "self-hosted-tenant",
+            "display_name": "Self Hosted Tenant",
+            "infra_mode": "shared",
+            "vertical_pack": "hotel",
+            "admin_email": "owner@tenant.com",
+            "primary_domains": ["hotel-demo.example.com"],
+            "feature_flags": ["seo-suite", "custom-domain"],
+        },
+    )
+
+    assert tenant_response.status_code == 201
+    website_deployment = tenant_response.json()["website_deployment"]
+    assert website_deployment["provider"] == "github_self_hosted"
+    assert website_deployment["status"] == "ready"
+    assert website_deployment["repo_url"] == "https://github.com/kalp-sites/kalp-biz-self-hosted-tenant"
+    assert website_deployment["repo_name"] == "kalp-biz-self-hosted-tenant"
+    assert website_deployment["production_url"] == "https://kalptree.xyz/self-hosted-tenant"
+    assert website_deployment["deployment_url"] == "https://kalptree.xyz/self-hosted-tenant"
+    assert website_deployment["local_repo_path"] == "/tmp/kalp-sites/kalp-biz-self-hosted-tenant"
+    assert website_deployment["platform_host"] == "self-hosted-tenant.kalptree.xyz"
+    assert website_deployment["platform_url"] == "https://self-hosted-tenant.kalptree.xyz"
+    assert website_deployment["domains"] == [
+        {
+            "id": website_deployment["domains"][0]["id"],
+            "host": "hotel-demo.example.com",
+            "domain_kind": "custom",
+            "ssl_status": "pending_dns",
+            "is_primary": True,
+            "active": True,
+            "metadata": {"tenant_slug": "self-hosted-tenant"},
+            "created_at": website_deployment["domains"][0]["created_at"],
+            "updated_at": website_deployment["domains"][0]["updated_at"],
+        }
+    ]
+    assert website_deployment["message"] == (
+        "Business website repo created, synced to the server, and wired to the self-hosted Kalp runtime."
+    )
 
 
 def test_platform_admin_can_filter_audit_and_outbox_by_tenant_scope(client: TestClient) -> None:

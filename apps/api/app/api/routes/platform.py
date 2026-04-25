@@ -120,6 +120,7 @@ def tenants_create(
             vertical_pack=payload.vertical_pack,
             business_type=payload.business_type,
             admin_email=payload.admin_email,
+            primary_domains=payload.primary_domains,
             feature_flags=payload.feature_flags,
             dedicated_profile_id=payload.dedicated_profile_id,
         )
@@ -229,4 +230,3 @@ def business_blueprint_put(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
-

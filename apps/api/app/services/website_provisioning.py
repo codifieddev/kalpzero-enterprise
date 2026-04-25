@@ -1,10 +1,12 @@
 import json
 import logging
 import re
+import subprocess
 import time
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from sqlalchemy.orm import Session
@@ -48,17 +50,37 @@ def build_project_name(settings: Settings, *, tenant_slug: str) -> str:
 
 
 def get_missing_website_automation_settings(settings: Settings) -> list[str]:
-    required_settings = {
+    required_settings: dict[str, object | None] = {
         "KALPZERO_GITHUB_TOKEN": settings.github_token,
         "KALPZERO_GITHUB_REPO_OWNER": settings.github_repo_owner,
         "KALPZERO_GITHUB_TEMPLATE_OWNER": settings.github_template_owner,
         "KALPZERO_GITHUB_TEMPLATE_REPO": settings.github_template_repo,
-        "KALPZERO_VERCEL_TOKEN": settings.vercel_token,
     }
+    if settings.website_provider == "github_vercel":
+        required_settings["KALPZERO_VERCEL_TOKEN"] = settings.vercel_token
     return [name for name, value in required_settings.items() if not value]
 
 
-def serialize_website_deployment(deployment) -> dict[str, object] | None:
+def serialize_website_domains(domains: list[object] | None) -> list[dict[str, object]]:
+    serialized: list[dict[str, object]] = []
+    for domain in domains or []:
+        serialized.append(
+            {
+                "id": str(domain.id),
+                "host": domain.host,
+                "domain_kind": domain.domain_kind,
+                "ssl_status": domain.ssl_status,
+                "is_primary": domain.is_primary,
+                "active": domain.active,
+                "metadata": domain.metadata_json if isinstance(domain.metadata_json, dict) else {},
+                "created_at": domain.created_at.isoformat() if getattr(domain, "created_at", None) else None,
+                "updated_at": domain.updated_at.isoformat() if getattr(domain, "updated_at", None) else None,
+            }
+        )
+    return serialized
+
+
+def serialize_website_deployment(deployment, *, domains: list[object] | None = None) -> dict[str, object] | None:
     if deployment is None:
         return None
 
@@ -81,6 +103,10 @@ def serialize_website_deployment(deployment) -> dict[str, object] | None:
         "production_url": deployment.production_url,
         "message": message,
         "last_error": deployment.last_error,
+        "local_repo_path": metadata.get("local_repo_path"),
+        "platform_url": metadata.get("platform_url"),
+        "platform_host": metadata.get("platform_host"),
+        "domains": serialize_website_domains(domains),
         "metadata": metadata,
         "created_at": deployment.created_at.isoformat() if getattr(deployment, "created_at", None) else None,
         "updated_at": deployment.updated_at.isoformat() if getattr(deployment, "updated_at", None) else None,
@@ -94,10 +120,12 @@ def provision_business_website(
     tenant,
     actor_user_id: str,
     admin_email: str | None = None,
+    primary_domains: list[str] | None = None,
 ):
     deployment = platform_repository.get_or_create_tenant_website_deployment(
         db,
         tenant_id=str(tenant.id),
+        provider=settings.website_provider,
     )
 
     if deployment.status == "ready" and deployment.production_url:
@@ -112,6 +140,7 @@ def provision_business_website(
         "repo_name": repo_name,
         "project_name": project_name,
         "admin_email": admin_email,
+        "requested_primary_domains": _normalize_requested_domains(primary_domains or [], tenant_slug=tenant.slug),
     }
 
     if missing_settings:
@@ -138,6 +167,12 @@ def provision_business_website(
         db.commit()
         return deployment
 
+    initial_message = (
+        "Creating the business website repository, syncing a server checkout, and wiring the self-hosted public URL."
+        if settings.website_provider == "github_self_hosted"
+        else "Creating the business website repository and Vercel project."
+    )
+
     deployment = _update_deployment(
         db,
         deployment,
@@ -146,153 +181,32 @@ def provision_business_website(
         repo_name=repo_name,
         vercel_project_name=project_name,
         metadata=base_metadata,
-        message="Creating the business website repository and Vercel project.",
+        message=initial_message,
     )
     db.commit()
 
     try:
-        repo_response = _create_github_repository_from_template(
-            settings,
-            repo_name=repo_name,
-            description=f"Business website for {tenant.display_name}",
-        )
-        deployment = _update_deployment(
-            db,
-            deployment,
-            status="repo_created",
-            repo_name=repo_response.get("name") or repo_name,
-            repo_url=repo_response.get("html_url"),
-            repo_id=str(repo_response["id"]) if repo_response.get("id") is not None else None,
-            metadata={
-                "github_full_name": repo_response.get("full_name"),
-                "github_default_branch": repo_response.get("default_branch"),
-            },
-            message="GitHub repository created from the business website template.",
-        )
-        db.commit()
-
-        project_response = _create_vercel_project(
-            settings,
-            project_name=project_name,
-            repo_name=deployment.repo_name or repo_name,
-        )
-        deployment = _update_deployment(
-            db,
-            deployment,
-            status="project_created",
-            vercel_project_id=project_response.get("id"),
-            vercel_project_name=project_response.get("name") or project_name,
-            metadata={
-                "vercel_project_link": project_response.get("link"),
-            },
-            message="Vercel project created and connected to the GitHub repository.",
-        )
-        db.commit()
-
-        env_payload = _build_vercel_environment_variables(
-            settings,
-            tenant_slug=tenant.slug,
-            tenant_display_name=tenant.display_name,
-            admin_email=admin_email,
-        )
-        _upsert_vercel_project_environment_variables(
-            settings,
-            project_name=deployment.vercel_project_name or project_name,
-            environment_variables=env_payload,
-        )
-        deployment = _update_deployment(
-            db,
-            deployment,
-            status="deploying",
-            metadata={"vercel_environment_keys": [item["key"] for item in env_payload]},
-            message="Vercel environment variables synced. Starting the first production deployment.",
-        )
-        db.commit()
-
-        create_response = _create_vercel_deployment(
-            settings,
-            project_name=deployment.vercel_project_name or project_name,
-            repo_name=deployment.repo_name or repo_name,
-        )
-        deployment_url = _select_vercel_public_url(create_response)
-        deployment = _update_deployment(
-            db,
-            deployment,
-            status="deploying",
-            deployment_id=create_response.get("id"),
-            deployment_url=deployment_url,
-            production_url=deployment_url,
-            metadata={"vercel_initial_status": _deployment_status(create_response)},
-            message="Vercel production deployment started.",
-        )
-        db.commit()
-
-        final_response = _wait_for_vercel_deployment(
-            settings,
-            deployment_id=deployment.deployment_id,
-            initial_response=create_response,
-        )
-        final_status = _deployment_status(final_response)
-        final_url = _select_vercel_public_url(final_response) or deployment.production_url
-
-        if final_status == "READY":
-            deployment = _update_deployment(
+        if settings.website_provider == "github_self_hosted":
+            return _provision_github_self_hosted(
                 db,
-                deployment,
-                status="ready",
-                deployment_url=final_url,
-                production_url=final_url,
-                last_error=None,
-                metadata={"vercel_final_status": final_status},
-                message="Business website repo created and the first Vercel production deployment is live.",
-            )
-            platform_repository.create_audit_event(
-                db,
-                tenant_id=str(tenant.id),
+                settings,
+                deployment=deployment,
+                tenant=tenant,
                 actor_user_id=actor_user_id,
-                action="platform.website.provisioned",
-                subject_type="tenant",
-                subject_id=str(tenant.id),
-                metadata_json={
-                    "slug": tenant.slug,
-                    "repo_url": deployment.repo_url,
-                    "production_url": deployment.production_url,
-                },
+                admin_email=admin_email,
+                primary_domains=base_metadata["requested_primary_domains"],
             )
-            db.commit()
-            return deployment
 
-        if final_status in {"ERROR", "CANCELED"}:
-            error_message = final_response.get("errorMessage")
-            detail = f"Vercel deployment finished with status {final_status.lower()}."
-            if error_message:
-                detail = f"{detail} {error_message}"
-            raise WebsiteProvisioningError(detail)
-
-        deployment = _update_deployment(
+        return _provision_github_vercel(
             db,
-            deployment,
-            status="deploying",
-            deployment_url=final_url,
-            production_url=final_url,
-            metadata={"vercel_final_status": final_status},
-            message=f"Vercel deployment is still {final_status.lower()} but the deployment URL has been issued.",
-        )
-        platform_repository.create_audit_event(
-            db,
-            tenant_id=str(tenant.id),
+            settings,
+            deployment=deployment,
+            tenant=tenant,
             actor_user_id=actor_user_id,
-            action="platform.website.provisioning.started",
-            subject_type="tenant",
-            subject_id=str(tenant.id),
-            metadata_json={
-                "slug": tenant.slug,
-                "repo_url": deployment.repo_url,
-                "deployment_url": deployment.deployment_url,
-            },
+            admin_email=admin_email,
+            repo_name=repo_name,
+            project_name=project_name,
         )
-        db.commit()
-        return deployment
     except WebsiteProvisioningError as exc:
         message = str(exc)
     except Exception as exc:  # pragma: no cover - defensive fallback
@@ -319,6 +233,244 @@ def provision_business_website(
             "repo_name": deployment.repo_name,
             "project_name": deployment.vercel_project_name,
             "error": message,
+        },
+    )
+    db.commit()
+    return deployment
+
+
+def _provision_github_vercel(
+    db: Session,
+    settings: Settings,
+    *,
+    deployment,
+    tenant,
+    actor_user_id: str,
+    admin_email: str | None,
+    repo_name: str,
+    project_name: str,
+):
+    repo_response = _create_github_repository_from_template(
+        settings,
+        repo_name=repo_name,
+        description=f"Business website for {tenant.display_name}",
+    )
+    deployment = _update_deployment(
+        db,
+        deployment,
+        status="repo_created",
+        repo_name=repo_response.get("name") or repo_name,
+        repo_url=repo_response.get("html_url"),
+        repo_id=str(repo_response["id"]) if repo_response.get("id") is not None else None,
+        metadata={
+            "github_full_name": repo_response.get("full_name"),
+            "github_default_branch": repo_response.get("default_branch"),
+        },
+        message="GitHub repository created from the business website template.",
+    )
+    db.commit()
+
+    project_response = _create_vercel_project(
+        settings,
+        project_name=project_name,
+        repo_name=deployment.repo_name or repo_name,
+    )
+    deployment = _update_deployment(
+        db,
+        deployment,
+        status="project_created",
+        vercel_project_id=project_response.get("id"),
+        vercel_project_name=project_response.get("name") or project_name,
+        metadata={
+            "vercel_project_link": project_response.get("link"),
+        },
+        message="Vercel project created and connected to the GitHub repository.",
+    )
+    db.commit()
+
+    env_payload = _build_vercel_environment_variables(
+        settings,
+        tenant_slug=tenant.slug,
+        tenant_display_name=tenant.display_name,
+        admin_email=admin_email,
+    )
+    _upsert_vercel_project_environment_variables(
+        settings,
+        project_name=deployment.vercel_project_name or project_name,
+        environment_variables=env_payload,
+    )
+    deployment = _update_deployment(
+        db,
+        deployment,
+        status="deploying",
+        metadata={"vercel_environment_keys": [item["key"] for item in env_payload]},
+        message="Vercel environment variables synced. Starting the first production deployment.",
+    )
+    db.commit()
+
+    create_response = _create_vercel_deployment(
+        settings,
+        project_name=deployment.vercel_project_name or project_name,
+        repo_name=deployment.repo_name or repo_name,
+    )
+    deployment_url = _select_vercel_public_url(create_response)
+    deployment = _update_deployment(
+        db,
+        deployment,
+        status="deploying",
+        deployment_id=create_response.get("id"),
+        deployment_url=deployment_url,
+        production_url=deployment_url,
+        metadata={"vercel_initial_status": _deployment_status(create_response)},
+        message="Vercel production deployment started.",
+    )
+    db.commit()
+
+    final_response = _wait_for_vercel_deployment(
+        settings,
+        deployment_id=deployment.deployment_id,
+        initial_response=create_response,
+    )
+    final_status = _deployment_status(final_response)
+    final_url = _select_vercel_public_url(final_response) or deployment.production_url
+
+    if final_status == "READY":
+        deployment = _update_deployment(
+            db,
+            deployment,
+            status="ready",
+            deployment_url=final_url,
+            production_url=final_url,
+            last_error=None,
+            metadata={"vercel_final_status": final_status},
+            message="Business website repo created and the first Vercel production deployment is live.",
+        )
+        platform_repository.create_audit_event(
+            db,
+            tenant_id=str(tenant.id),
+            actor_user_id=actor_user_id,
+            action="platform.website.provisioned",
+            subject_type="tenant",
+            subject_id=str(tenant.id),
+            metadata_json={
+                "slug": tenant.slug,
+                "repo_url": deployment.repo_url,
+                "production_url": deployment.production_url,
+            },
+        )
+        db.commit()
+        return deployment
+
+    if final_status in {"ERROR", "CANCELED"}:
+        error_message = final_response.get("errorMessage")
+        detail = f"Vercel deployment finished with status {final_status.lower()}."
+        if error_message:
+            detail = f"{detail} {error_message}"
+        raise WebsiteProvisioningError(detail)
+
+    deployment = _update_deployment(
+        db,
+        deployment,
+        status="deploying",
+        deployment_url=final_url,
+        production_url=final_url,
+        metadata={"vercel_final_status": final_status},
+        message=f"Vercel deployment is still {final_status.lower()} but the deployment URL has been issued.",
+    )
+    platform_repository.create_audit_event(
+        db,
+        tenant_id=str(tenant.id),
+        actor_user_id=actor_user_id,
+        action="platform.website.provisioning.started",
+        subject_type="tenant",
+        subject_id=str(tenant.id),
+        metadata_json={
+            "slug": tenant.slug,
+            "repo_url": deployment.repo_url,
+            "deployment_url": deployment.deployment_url,
+        },
+    )
+    db.commit()
+    return deployment
+
+
+def _provision_github_self_hosted(
+    db: Session,
+    settings: Settings,
+    *,
+    deployment,
+    tenant,
+    actor_user_id: str,
+    admin_email: str | None,
+    primary_domains: list[str],
+):
+    repo_name = build_repository_name(settings, tenant_slug=tenant.slug)
+    repo_response = _create_github_repository_from_template(
+        settings,
+        repo_name=repo_name,
+        description=f"Business website for {tenant.display_name}",
+    )
+    deployment = _update_deployment(
+        db,
+        deployment,
+        status="repo_created",
+        repo_name=repo_response.get("name") or repo_name,
+        repo_url=repo_response.get("html_url"),
+        repo_id=str(repo_response["id"]) if repo_response.get("id") is not None else None,
+        deployment_id=None,
+        deployment_url=None,
+        vercel_project_id=None,
+        vercel_project_name=None,
+        metadata={
+            "github_full_name": repo_response.get("full_name"),
+            "github_default_branch": repo_response.get("default_branch"),
+        },
+        message="GitHub repository created from the business website template.",
+    )
+    db.commit()
+
+    local_repo_path = _sync_local_repository_checkout(
+        settings,
+        repo_name=deployment.repo_name or repo_name,
+    )
+    production_url = _build_self_hosted_public_url(settings, tenant_slug=tenant.slug)
+    platform_host = _build_platform_subdomain_host(settings, tenant_slug=tenant.slug)
+    _sync_self_hosted_domains(
+        db,
+        settings,
+        tenant_id=str(tenant.id),
+        tenant_slug=tenant.slug,
+        primary_domains=primary_domains,
+    )
+
+    deployment = _update_deployment(
+        db,
+        deployment,
+        status="ready",
+        production_url=production_url,
+        deployment_url=production_url,
+        metadata={
+            "local_repo_path": local_repo_path,
+            "platform_host": platform_host,
+            "platform_url": _build_subdomain_url(settings, host=platform_host),
+            "public_url_mode": settings.website_public_url_mode,
+            "requested_primary_domains": primary_domains,
+        },
+        message="Business website repo created, synced to the server, and wired to the self-hosted Kalp runtime.",
+    )
+    platform_repository.create_audit_event(
+        db,
+        tenant_id=str(tenant.id),
+        actor_user_id=actor_user_id,
+        action="platform.website.provisioned",
+        subject_type="tenant",
+        subject_id=str(tenant.id),
+        metadata_json={
+            "slug": tenant.slug,
+            "repo_url": deployment.repo_url,
+            "production_url": deployment.production_url,
+            "local_repo_path": local_repo_path,
+            "primary_domains": primary_domains,
         },
     )
     db.commit()
@@ -370,6 +522,153 @@ def _create_github_repository_from_template(
             "private": settings.website_repo_private,
         },
     )
+
+
+def normalize_host(value: str) -> str:
+    candidate = (value or "").strip().lower()
+    if not candidate:
+        return ""
+    if "://" in candidate:
+        parsed = urlparse(candidate)
+        candidate = parsed.netloc or parsed.path
+    candidate = candidate.split("/", maxsplit=1)[0].strip()
+    if ":" in candidate:
+        candidate = candidate.split(":", maxsplit=1)[0].strip()
+    return candidate.strip(".")
+
+
+def _normalize_requested_domains(values: list[str], *, tenant_slug: str) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw_value in values:
+        host = normalize_host(raw_value)
+        if not host:
+            continue
+        if host.startswith("."):
+            host = f"{tenant_slug}{host}"
+        if "." not in host:
+            continue
+        if host in seen:
+            continue
+        seen.add(host)
+        normalized.append(host)
+    return normalized
+
+
+def _build_platform_subdomain_host(settings: Settings, *, tenant_slug: str) -> str:
+    return f"{_sanitize_identifier(tenant_slug, max_length=63)}.{settings.website_root_host}"
+
+
+def _public_base_url(settings: Settings) -> str:
+    return settings.public_web_url.rstrip("/")
+
+
+def _build_subdomain_url(settings: Settings, *, host: str) -> str:
+    parsed = urlparse(_public_base_url(settings))
+    scheme = parsed.scheme or "https"
+    return f"{scheme}://{host}"
+
+
+def _build_self_hosted_public_url(settings: Settings, *, tenant_slug: str) -> str:
+    if settings.website_public_url_mode == "subdomain":
+        return _build_subdomain_url(
+            settings,
+            host=_build_platform_subdomain_host(settings, tenant_slug=tenant_slug),
+        )
+    return f"{_public_base_url(settings)}/{tenant_slug}"
+
+
+def _run_git_command(*args: str, cwd: Path | None = None) -> None:
+    try:
+        subprocess.run(
+            args,
+            cwd=str(cwd) if cwd else None,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or "git command failed"
+        raise WebsiteProvisioningError(detail) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise WebsiteProvisioningError("Timed out while syncing the local website repository.") from exc
+
+
+def _sync_local_repository_checkout(
+    settings: Settings,
+    *,
+    repo_name: str,
+) -> str:
+    root = Path(settings.website_local_repo_root).expanduser()
+    root.mkdir(parents=True, exist_ok=True)
+    repo_path = root / repo_name
+    repo_url = f"https://github.com/{settings.github_repo_owner}/{repo_name}.git"
+    auth_header = f"AUTHORIZATION: bearer {settings.github_token}"
+
+    if (repo_path / ".git").exists():
+        _run_git_command(
+            "git",
+            "-c",
+            f"http.extraheader={auth_header}",
+            "fetch",
+            "origin",
+            settings.github_default_branch,
+            "--depth",
+            "1",
+            cwd=repo_path,
+        )
+        _run_git_command("git", "reset", "--hard", "FETCH_HEAD", cwd=repo_path)
+        _run_git_command("git", "clean", "-fd", cwd=repo_path)
+        return str(repo_path)
+
+    _run_git_command(
+        "git",
+        "-c",
+        f"http.extraheader={auth_header}",
+        "clone",
+        "--depth",
+        "1",
+        "--branch",
+        settings.github_default_branch,
+        repo_url,
+        str(repo_path),
+    )
+    return str(repo_path)
+
+
+def _sync_self_hosted_domains(
+    db: Session,
+    settings: Settings,
+    *,
+    tenant_id: str,
+    tenant_slug: str,
+    primary_domains: list[str],
+) -> None:
+    platform_host = _build_platform_subdomain_host(settings, tenant_slug=tenant_slug)
+    if settings.website_public_url_mode == "subdomain":
+        platform_repository.upsert_tenant_website_domain(
+            db,
+            tenant_id=tenant_id,
+            host=platform_host,
+            domain_kind="platform_subdomain",
+            ssl_status="pending_dns",
+            is_primary=not primary_domains,
+            active=True,
+            metadata_json={"tenant_slug": tenant_slug},
+        )
+
+    for index, host in enumerate(primary_domains):
+        platform_repository.upsert_tenant_website_domain(
+            db,
+            tenant_id=tenant_id,
+            host=host,
+            domain_kind="custom",
+            ssl_status="pending_dns",
+            is_primary=index == 0,
+            active=True,
+            metadata_json={"tenant_slug": tenant_slug},
+        )
 
 
 def _create_vercel_project(
