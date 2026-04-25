@@ -410,6 +410,17 @@ export async function createTenant(
   );
 }
 
+export async function syncTenantWebsite(token: string, tenantSlug: string) {
+  return request<TenantDto>(
+    `/platform/tenants/${encodeURIComponent(tenantSlug)}/website/sync`,
+    {
+      method: "POST",
+      body: JSON.stringify({}),
+    },
+    token
+  );
+}
+
 export async function getTenantSummary(token: string) {
   return request<TenantDto>("/platform/tenant", undefined, token);
 }

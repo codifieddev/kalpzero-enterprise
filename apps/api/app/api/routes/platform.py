@@ -25,6 +25,7 @@ from app.services.platform import (
     list_audit_events_for_scope,
     list_outbox_events_for_scope,
     put_business_blueprint,
+    sync_tenant_website_domains,
 )
 
 router = APIRouter()
@@ -130,6 +131,26 @@ def tenants_create(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except ConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/tenants/{tenant_slug}/website/sync")
+def tenant_website_sync(
+    tenant_slug: str,
+    session: SessionContext = Depends(require_permission("platform.tenants.manage")),
+    db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return sync_tenant_website_domains(
+            db,
+            settings,
+            actor_user_id=session.user_id,
+            tenant_slug=tenant_slug,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/audit")

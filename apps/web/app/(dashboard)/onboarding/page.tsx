@@ -48,6 +48,8 @@ import {
   createTenant,
   isApiError,
   register,
+  syncTenantWebsite,
+  type TenantDto,
   type TenantWebsiteDomainDto,
 } from "@/lib/api";
 
@@ -305,11 +307,53 @@ function buildFeatureFlags(enabledModules: string[], featureFlags: Record<string
   return Array.from(new Set(flags));
 }
 
+function buildDeploymentSummary(
+  tenant: TenantDto,
+  options: {
+    agencySlug: string;
+    businessName: string;
+    provisioningMode: "full_tenant" | "lite_profile";
+    ownerAdminEmail: string;
+    ownerAdminPassword: string;
+    primaryDomains: string[];
+    ownerAccountMessage?: string | null;
+  }
+): DeploymentSummary {
+  const websiteDeployment = tenant.website_deployment;
+  return {
+    tenantKey: tenant.slug,
+    tenantName: options.businessName || "Unnamed Business",
+    agencySlug: options.agencySlug,
+    provisioningMode: options.provisioningMode,
+    loginUrl: "/login",
+    ownerAdminEmail: options.ownerAdminEmail,
+    ownerAdminPassword: options.ownerAdminPassword,
+    primaryDomains: options.primaryDomains,
+    websiteProvider: websiteDeployment?.provider ?? null,
+    websiteStatus: websiteDeployment?.status ?? "disabled",
+    websiteUrl: websiteDeployment?.production_url ?? `${window.location.origin}/${tenant.slug}`,
+    repoUrl: websiteDeployment?.repo_url ?? null,
+    platformUrl: websiteDeployment?.platform_url ?? null,
+    platformHost: websiteDeployment?.platform_host ?? null,
+    websiteMessage: websiteDeployment?.message ?? null,
+    domains: websiteDeployment?.domains ?? [],
+    ownerAccountMessage: options.ownerAccountMessage ?? null,
+    publicSlug: tenant.slug,
+    databaseMode: tenant.infra_mode === "dedicated" ? "dedicated" : "shared",
+    databaseName:
+      tenant.runtime_documents?.database ??
+      (tenant.infra_mode === "dedicated"
+        ? `kalpzero_runtime__tenant__${tenant.slug}`
+        : "shared runtime database"),
+  };
+}
+
 export default function OnboardingWizard() {
   const router = useRouter();
   const { session, status, token } = useAuth();
   const [activeStep, setActiveStep] = useState(0);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [isSyncingDomains, setIsSyncingDomains] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const wizardShellRef = useRef<HTMLDivElement>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -805,38 +849,49 @@ export default function OnboardingWizard() {
             : "The workspace is ready, but owner login creation needs attention.";
       }
 
-      const websiteDeployment = tenant.website_deployment;
-      setDeploymentResult({
-        tenantKey: tenant.slug,
-        tenantName: formData.businessName || "Unnamed Business",
-        agencySlug,
-        provisioningMode: formData.provisioningMode,
-        loginUrl: "/login",
-        ownerAdminEmail: adminEmail,
-        ownerAdminPassword: formData.ownerAdminPassword,
-        primaryDomains,
-        websiteProvider: websiteDeployment?.provider ?? null,
-        websiteStatus: websiteDeployment?.status ?? "disabled",
-        websiteUrl: websiteDeployment?.production_url ?? `${window.location.origin}/${tenant.slug}`,
-        repoUrl: websiteDeployment?.repo_url ?? null,
-        platformUrl: websiteDeployment?.platform_url ?? null,
-        platformHost: websiteDeployment?.platform_host ?? null,
-        websiteMessage: websiteDeployment?.message ?? null,
-        domains: websiteDeployment?.domains ?? [],
-        ownerAccountMessage,
-        publicSlug: tenant.slug,
-        databaseMode: infraMode === "dedicated" ? "dedicated" : "shared",
-        databaseName:
-          tenant.runtime_documents?.database ??
-          (infraMode === "dedicated"
-            ? `kalpzero_runtime__tenant__${tenant.slug}`
-            : "shared runtime database"),
-      });
+      setDeploymentResult(
+        buildDeploymentSummary(tenant, {
+          agencySlug,
+          businessName: formData.businessName,
+          provisioningMode: formData.provisioningMode,
+          ownerAdminEmail: adminEmail,
+          ownerAdminPassword: formData.ownerAdminPassword,
+          primaryDomains,
+          ownerAccountMessage,
+        })
+      );
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Tenant provisioning failed.");
     } finally {
       setIsDeploying(false);
+    }
+  };
+
+  const handleSyncDomains = async () => {
+    if (!token || !deploymentResult) {
+      return;
+    }
+
+    setIsSyncingDomains(true);
+    try {
+      const tenant = await syncTenantWebsite(token, deploymentResult.publicSlug);
+      setDeploymentResult(
+        buildDeploymentSummary(tenant, {
+          agencySlug: deploymentResult.agencySlug,
+          businessName: deploymentResult.tenantName,
+          provisioningMode: deploymentResult.provisioningMode,
+          ownerAdminEmail: deploymentResult.ownerAdminEmail,
+          ownerAdminPassword: deploymentResult.ownerAdminPassword,
+          primaryDomains: deploymentResult.primaryDomains,
+          ownerAccountMessage: deploymentResult.ownerAccountMessage,
+        })
+      );
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Domain sync failed.");
+    } finally {
+      setIsSyncingDomains(false);
     }
   };
 
@@ -2259,6 +2314,25 @@ export default function OnboardingWizard() {
                                     )}
                                   </div>
                                   <div>
+                                    <div className="text-slate-500">Platform Host</div>
+                                    {deploymentResult.platformUrl ? (
+                                      <a
+                                        href={deploymentResult.platformUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="mt-1 block break-all font-mono text-cyan-300 underline-offset-4 hover:underline"
+                                      >
+                                        {deploymentResult.platformUrl}
+                                      </a>
+                                    ) : deploymentResult.platformHost ? (
+                                      <div className="mt-1 break-all font-mono text-white">
+                                        {deploymentResult.platformHost}
+                                      </div>
+                                    ) : (
+                                      <div className="mt-1 text-slate-500">Pending</div>
+                                    )}
+                                  </div>
+                                  <div>
                                     <div className="text-slate-500">GitHub Repo</div>
                                     {deploymentResult.repoUrl ? (
                                       <a
@@ -2279,6 +2353,23 @@ export default function OnboardingWizard() {
                                       {deploymentResult.loginUrl}
                                     </div>
                                   </div>
+                                  {deploymentResult.websiteMessage ? (
+                                    <div className="rounded-2xl border border-cyan-500/15 bg-cyan-500/10 px-3 py-3 text-xs leading-relaxed text-cyan-100">
+                                      {deploymentResult.websiteMessage}
+                                    </div>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={handleSyncDomains}
+                                    disabled={isSyncingDomains}
+                                    className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-xs font-semibold uppercase tracking-widest transition ${
+                                      isSyncingDomains
+                                        ? "cursor-wait border-slate-700 bg-slate-900 text-slate-400"
+                                        : "border-cyan-500/30 bg-cyan-500/10 text-cyan-100 hover:border-cyan-400 hover:bg-cyan-500/20"
+                                    }`}
+                                  >
+                                    {isSyncingDomains ? "Syncing Domains..." : "Sync Domains & SSL"}
+                                  </button>
                                 </div>
                               </div>
 
@@ -2344,6 +2435,11 @@ export default function OnboardingWizard() {
                                         {domain.domain_kind} • SSL {domain.ssl_status}
                                         {domain.is_primary ? " • primary" : ""}
                                       </div>
+                                      {typeof domain.metadata?.message === "string" ? (
+                                        <div className="mt-2 leading-relaxed text-slate-400">
+                                          {domain.metadata.message}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   ))
                                 ) : (

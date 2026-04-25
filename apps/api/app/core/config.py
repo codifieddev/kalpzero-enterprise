@@ -50,6 +50,20 @@ class Settings(BaseSettings):
         alias="KALPZERO_WEBSITE_LOCAL_REPO_ROOT",
     )
     website_public_url_mode: str = Field(default="path", alias="KALPZERO_WEBSITE_PUBLIC_URL_MODE")
+    website_domain_provisioner_command: str = Field(
+        default="/usr/local/sbin/kalpzero-domain-provision",
+        alias="KALPZERO_WEBSITE_DOMAIN_PROVISIONER_COMMAND",
+    )
+    website_domain_provisioner_sudo: bool = Field(
+        default=True,
+        alias="KALPZERO_WEBSITE_DOMAIN_PROVISIONER_SUDO",
+    )
+    website_acme_email: str | None = Field(default=None, alias="KALPZERO_WEBSITE_ACME_EMAIL")
+    website_server_public_ip: str | None = Field(default=None, alias="KALPZERO_SERVER_PUBLIC_IP")
+    website_reserved_subdomains: str = Field(
+        default="www,api,docs,admin",
+        alias="KALPZERO_WEBSITE_RESERVED_SUBDOMAINS",
+    )
     vercel_token: str | None = Field(default=None, alias="KALPZERO_VERCEL_TOKEN")
     vercel_team_id: str | None = Field(default=None, alias="KALPZERO_VERCEL_TEAM_ID")
     vercel_team_slug: str | None = Field(default=None, alias="KALPZERO_VERCEL_TEAM_SLUG")
@@ -108,6 +122,14 @@ class Settings(BaseSettings):
             return explicit
         parsed = urlparse(self.public_web_url)
         return parsed.hostname.lower() if parsed.hostname else "kalptree.xyz"
+
+    @property
+    def website_reserved_subdomain_labels(self) -> set[str]:
+        return {
+            entry.strip().lower()
+            for entry in self.website_reserved_subdomains.split(",")
+            if entry.strip()
+        }
 
 
 @lru_cache

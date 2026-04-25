@@ -78,6 +78,19 @@ def get_tenant_website_domain_by_host(db: Session, *, host: str) -> TenantWebsit
     return db.scalar(select(TenantWebsiteDomainModel).where(TenantWebsiteDomainModel.host == host))
 
 
+def update_tenant_website_domain(
+    db: Session,
+    domain: TenantWebsiteDomainModel,
+    **fields,
+) -> TenantWebsiteDomainModel:
+    for key, value in fields.items():
+        setattr(domain, key, value)
+
+    db.add(domain)
+    db.flush()
+    return domain
+
+
 def upsert_tenant_website_domain(
     db: Session,
     *,

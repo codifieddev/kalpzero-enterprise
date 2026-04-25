@@ -1,8 +1,10 @@
 import json
 import logging
 import re
+import socket
 import subprocess
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -21,6 +23,7 @@ USER_AGENT = "kalpzero-enterprise/0.1"
 PENDING_DEPLOYMENT_STATUSES = {"QUEUED", "BUILDING", "INITIALIZING"}
 DEPLOYMENT_POLL_ATTEMPTS = 6
 DEPLOYMENT_POLL_INTERVAL_SECONDS = 5
+DOMAIN_PROVISION_TIMEOUT_SECONDS = 180
 
 logger = logging.getLogger(__name__)
 
@@ -239,6 +242,73 @@ def provision_business_website(
     return deployment
 
 
+def sync_self_hosted_website_domains(
+    db: Session,
+    settings: Settings,
+    *,
+    tenant,
+    actor_user_id: str,
+    admin_email: str | None = None,
+):
+    deployment = platform_repository.get_or_create_tenant_website_deployment(
+        db,
+        tenant_id=str(tenant.id),
+        provider=settings.website_provider,
+    )
+    requested_primary_domains = deployment.metadata_json.get("requested_primary_domains")
+    normalized_primary_domains = (
+        [normalize_host(value) for value in requested_primary_domains if isinstance(value, str)]
+        if isinstance(requested_primary_domains, list)
+        else []
+    )
+
+    _sync_self_hosted_domains(
+        db,
+        settings,
+        tenant_id=str(tenant.id),
+        tenant_slug=tenant.slug,
+        primary_domains=normalized_primary_domains,
+    )
+    _, production_url, message = _activate_self_hosted_domains(
+        db,
+        settings,
+        tenant=tenant,
+        admin_email=admin_email or deployment.metadata_json.get("admin_email"),
+    )
+
+    deployment = _update_deployment(
+        db,
+        deployment,
+        status="ready",
+        production_url=production_url,
+        deployment_url=production_url,
+        metadata={
+            "platform_host": _build_platform_subdomain_host(settings, tenant_slug=tenant.slug),
+            "platform_url": _build_subdomain_url(
+                settings,
+                host=_build_platform_subdomain_host(settings, tenant_slug=tenant.slug),
+            ),
+            "requested_primary_domains": normalized_primary_domains,
+        },
+        message=message,
+    )
+    platform_repository.create_audit_event(
+        db,
+        tenant_id=str(tenant.id),
+        actor_user_id=actor_user_id,
+        action="platform.website.domains.synced",
+        subject_type="tenant",
+        subject_id=str(tenant.id),
+        metadata_json={
+            "slug": tenant.slug,
+            "production_url": production_url,
+            "platform_host": _build_platform_subdomain_host(settings, tenant_slug=tenant.slug),
+        },
+    )
+    db.commit()
+    return deployment
+
+
 def _provision_github_vercel(
     db: Session,
     settings: Settings,
@@ -433,7 +503,6 @@ def _provision_github_self_hosted(
         settings,
         repo_name=deployment.repo_name or repo_name,
     )
-    production_url = _build_self_hosted_public_url(settings, tenant_slug=tenant.slug)
     platform_host = _build_platform_subdomain_host(settings, tenant_slug=tenant.slug)
     _sync_self_hosted_domains(
         db,
@@ -441,6 +510,12 @@ def _provision_github_self_hosted(
         tenant_id=str(tenant.id),
         tenant_slug=tenant.slug,
         primary_domains=primary_domains,
+    )
+    _domains, production_url, provisioning_message = _activate_self_hosted_domains(
+        db,
+        settings,
+        tenant=tenant,
+        admin_email=admin_email,
     )
 
     deployment = _update_deployment(
@@ -456,7 +531,7 @@ def _provision_github_self_hosted(
             "public_url_mode": settings.website_public_url_mode,
             "requested_primary_domains": primary_domains,
         },
-        message="Business website repo created, synced to the server, and wired to the self-hosted Kalp runtime.",
+        message=provisioning_message,
     )
     platform_repository.create_audit_event(
         db,
@@ -537,6 +612,57 @@ def normalize_host(value: str) -> str:
     return candidate.strip(".")
 
 
+def resolve_public_website_host(
+    db: Session,
+    settings: Settings,
+    *,
+    host: str,
+) -> dict[str, object] | None:
+    normalized_host = normalize_host(host)
+    if not normalized_host:
+        return None
+
+    root_host = settings.website_root_host
+    if normalized_host in {root_host, f"www.{root_host}"}:
+        return None
+
+    stored_domain = platform_repository.get_tenant_website_domain_by_host(db, host=normalized_host)
+    if stored_domain is not None and stored_domain.active:
+        tenant = platform_repository.get_tenant_by_id(db, id=str(stored_domain.tenant_id))
+        if tenant is not None:
+            return {
+                "tenant_id": str(tenant.id),
+                "tenant_slug": tenant.slug,
+                "host": normalized_host,
+                "domain_kind": stored_domain.domain_kind,
+                "ssl_status": stored_domain.ssl_status,
+                "production_url": _build_subdomain_url(settings, host=normalized_host),
+            }
+
+    suffix = f".{root_host}"
+    if not normalized_host.endswith(suffix):
+        return None
+
+    label = normalized_host[: -len(suffix)].strip(".")
+    if not label or "." in label:
+        return None
+    if label in settings.website_reserved_subdomain_labels:
+        return None
+
+    tenant = platform_repository.get_tenant_by_slug(db, slug=label)
+    if tenant is None:
+        return None
+
+    return {
+        "tenant_id": str(tenant.id),
+        "tenant_slug": tenant.slug,
+        "host": normalized_host,
+        "domain_kind": "platform_subdomain",
+        "ssl_status": "pending_dns",
+        "production_url": _build_subdomain_url(settings, host=normalized_host),
+    }
+
+
 def _normalize_requested_domains(values: list[str], *, tenant_slug: str) -> list[str]:
     normalized: list[str] = []
     seen: set[str] = set()
@@ -576,6 +702,277 @@ def _build_self_hosted_public_url(settings: Settings, *, tenant_slug: str) -> st
             host=_build_platform_subdomain_host(settings, tenant_slug=tenant_slug),
         )
     return f"{_public_base_url(settings)}/{tenant_slug}"
+
+
+def _timestamp_iso() -> str:
+    return datetime.now(tz=UTC).isoformat()
+
+
+def _resolve_server_public_ips(settings: Settings) -> set[str]:
+    candidates: set[str] = set()
+    explicit = normalize_host(settings.website_server_public_ip or "")
+    if explicit:
+        candidates.add(explicit)
+
+    for host in {settings.website_root_host, normalize_host(urlparse(settings.public_web_url).hostname or "")}:
+        if not host:
+            continue
+        try:
+            _, _, addresses = socket.gethostbyname_ex(host)
+        except OSError:
+            continue
+        for address in addresses:
+            normalized = normalize_host(address)
+            if normalized:
+                candidates.add(normalized)
+
+    return candidates
+
+
+def _lookup_host_ips(host: str) -> set[str]:
+    resolved: set[str] = set()
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return resolved
+
+    for info in infos:
+        sockaddr = info[4]
+        if not sockaddr:
+            continue
+        candidate = normalize_host(str(sockaddr[0]))
+        if candidate:
+            resolved.add(candidate)
+    return resolved
+
+
+def _merge_domain_metadata(domain, extra: dict[str, object]) -> dict[str, object]:
+    metadata = dict(domain.metadata_json or {})
+    for key, value in extra.items():
+        if value is not None:
+            metadata[key] = value
+    return metadata
+
+
+def _pending_dns_message(settings: Settings, *, host: str, domain_kind: str, expected_ips: set[str]) -> str:
+    ip_hint = ", ".join(sorted(expected_ips)) if expected_ips else "this server"
+    if domain_kind == "platform_subdomain" and host.endswith(f".{settings.website_root_host}"):
+        return (
+            f"DNS is not pointing {host} to {ip_hint} yet. Add a wildcard or an A record for this subdomain,"
+            " then run domain sync again."
+        )
+    return f"DNS is not pointing {host} to {ip_hint} yet. Point the domain to this server, then run domain sync again."
+
+
+def _build_domain_sync_message(*, ready_hosts: list[str], pending_dns_hosts: list[str], failed_hosts: list[str]) -> str:
+    parts = ["Business website repo created and synced to the server."]
+    if ready_hosts:
+        label = "domain is live" if len(ready_hosts) == 1 else "domains are live"
+        parts.append(f"{len(ready_hosts)} {label}: {', '.join(ready_hosts)}.")
+    if pending_dns_hosts:
+        label = "domain is waiting for DNS" if len(pending_dns_hosts) == 1 else "domains are waiting for DNS"
+        parts.append(f"{len(pending_dns_hosts)} {label}: {', '.join(pending_dns_hosts)}.")
+    if failed_hosts:
+        label = "domain needs operator attention" if len(failed_hosts) == 1 else "domains need operator attention"
+        parts.append(f"{len(failed_hosts)} {label}: {', '.join(failed_hosts)}.")
+    return " ".join(parts)
+
+
+def _select_self_hosted_production_url(
+    settings: Settings,
+    *,
+    tenant_slug: str,
+    domains: list[object],
+) -> str:
+    def pick(predicate):
+        for domain in domains:
+            if predicate(domain):
+                return _build_subdomain_url(settings, host=domain.host)
+        return None
+
+    primary_custom = pick(
+        lambda item: item.active and item.is_primary and item.domain_kind == "custom" and item.ssl_status == "ready"
+    )
+    if primary_custom:
+        return primary_custom
+
+    any_custom = pick(lambda item: item.active and item.domain_kind == "custom" and item.ssl_status == "ready")
+    if any_custom:
+        return any_custom
+
+    platform_subdomain = pick(
+        lambda item: item.active and item.domain_kind == "platform_subdomain" and item.ssl_status == "ready"
+    )
+    if platform_subdomain:
+        return platform_subdomain
+
+    return _build_self_hosted_public_url(settings, tenant_slug=tenant_slug)
+
+
+def _run_domain_provisioner(settings: Settings, *, host: str, email: str) -> dict[str, object]:
+    provisioner_path = Path(settings.website_domain_provisioner_command)
+    if not provisioner_path.exists():
+        raise WebsiteProvisioningError(
+            f"Self-hosted domain provisioner is not installed at {settings.website_domain_provisioner_command}."
+        )
+
+    command = [
+        str(provisioner_path),
+        "--host",
+        host,
+        "--web-upstream",
+        "127.0.0.1:3002",
+        "--api-upstream",
+        "127.0.0.1:8012",
+        "--email",
+        email,
+    ]
+    if settings.website_domain_provisioner_sudo:
+        command = ["sudo", "-n", *command]
+
+    try:
+        completed = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=DOMAIN_PROVISION_TIMEOUT_SECONDS,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or "domain provisioner failed"
+        raise WebsiteProvisioningError(detail) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise WebsiteProvisioningError("Timed out while provisioning the nginx and SSL config for the domain.") from exc
+
+    stdout = completed.stdout.strip()
+    if not stdout:
+        return {}
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return {"raw_output": stdout}
+    return payload if isinstance(payload, dict) else {"raw_output": stdout}
+
+
+def _activate_self_hosted_domains(
+    db: Session,
+    settings: Settings,
+    *,
+    tenant,
+    admin_email: str | None,
+) -> tuple[list[object], str, str]:
+    domains = platform_repository.list_tenant_website_domains(db, tenant_id=str(tenant.id))
+    contact_email = (settings.website_acme_email or admin_email or "").strip()
+    expected_ips = _resolve_server_public_ips(settings)
+    ready_hosts: list[str] = []
+    pending_dns_hosts: list[str] = []
+    failed_hosts: list[str] = []
+    refreshed_domains: list[object] = []
+
+    for domain in domains:
+        observed_ips = _lookup_host_ips(domain.host)
+        shared_metadata = {
+            "tenant_slug": tenant.slug,
+            "expected_server_ips": sorted(expected_ips),
+            "observed_ips": sorted(observed_ips),
+            "last_checked_at": _timestamp_iso(),
+        }
+
+        if expected_ips and not observed_ips.intersection(expected_ips):
+            message = _pending_dns_message(
+                settings,
+                host=domain.host,
+                domain_kind=domain.domain_kind,
+                expected_ips=expected_ips,
+            )
+            domain = platform_repository.update_tenant_website_domain(
+                db,
+                domain,
+                ssl_status="pending_dns",
+                active=True,
+                metadata_json=_merge_domain_metadata(
+                    domain,
+                    {
+                        **shared_metadata,
+                        "message": message,
+                        "last_error": None,
+                    },
+                ),
+            )
+            pending_dns_hosts.append(domain.host)
+            refreshed_domains.append(domain)
+            continue
+
+        if not contact_email:
+            message = "SSL automation requires KALPZERO_WEBSITE_ACME_EMAIL or an owner admin email."
+            domain = platform_repository.update_tenant_website_domain(
+                db,
+                domain,
+                ssl_status="error",
+                active=True,
+                metadata_json=_merge_domain_metadata(
+                    domain,
+                    {
+                        **shared_metadata,
+                        "message": message,
+                        "last_error": message,
+                    },
+                ),
+            )
+            failed_hosts.append(domain.host)
+            refreshed_domains.append(domain)
+            continue
+
+        try:
+            provisioner_payload = _run_domain_provisioner(settings, host=domain.host, email=contact_email)
+        except WebsiteProvisioningError as exc:
+            message = str(exc)
+            domain = platform_repository.update_tenant_website_domain(
+                db,
+                domain,
+                ssl_status="error",
+                active=True,
+                metadata_json=_merge_domain_metadata(
+                    domain,
+                    {
+                        **shared_metadata,
+                        "message": message,
+                        "last_error": message,
+                    },
+                ),
+            )
+            failed_hosts.append(domain.host)
+            refreshed_domains.append(domain)
+            continue
+
+        message = "HTTPS is live for this domain."
+        domain = platform_repository.update_tenant_website_domain(
+            db,
+            domain,
+            ssl_status="ready",
+            active=True,
+            metadata_json=_merge_domain_metadata(
+                domain,
+                {
+                    **shared_metadata,
+                    "message": message,
+                    "activated_at": _timestamp_iso(),
+                    "https_url": _build_subdomain_url(settings, host=domain.host),
+                    "provisioner": provisioner_payload,
+                    "last_error": None,
+                },
+            ),
+        )
+        ready_hosts.append(domain.host)
+        refreshed_domains.append(domain)
+
+    production_url = _select_self_hosted_production_url(settings, tenant_slug=tenant.slug, domains=refreshed_domains)
+    message = _build_domain_sync_message(
+        ready_hosts=ready_hosts,
+        pending_dns_hosts=pending_dns_hosts,
+        failed_hosts=failed_hosts,
+    )
+    return refreshed_domains, production_url, message
 
 
 def _run_git_command(*args: str, cwd: Path | None = None) -> None:
@@ -646,17 +1043,16 @@ def _sync_self_hosted_domains(
     primary_domains: list[str],
 ) -> None:
     platform_host = _build_platform_subdomain_host(settings, tenant_slug=tenant_slug)
-    if settings.website_public_url_mode == "subdomain":
-        platform_repository.upsert_tenant_website_domain(
-            db,
-            tenant_id=tenant_id,
-            host=platform_host,
-            domain_kind="platform_subdomain",
-            ssl_status="pending_dns",
-            is_primary=not primary_domains,
-            active=True,
-            metadata_json={"tenant_slug": tenant_slug},
-        )
+    platform_repository.upsert_tenant_website_domain(
+        db,
+        tenant_id=tenant_id,
+        host=platform_host,
+        domain_kind="platform_subdomain",
+        ssl_status="pending_dns",
+        is_primary=not primary_domains,
+        active=True,
+        metadata_json={"tenant_slug": tenant_slug},
+    )
 
     for index, host in enumerate(primary_domains):
         platform_repository.upsert_tenant_website_domain(

@@ -168,6 +168,7 @@ def test_platform_admin_can_provision_business_website_repo_and_vercel_project(
     monkeypatch.setenv("KALPZERO_GITHUB_TEMPLATE_OWNER", "kalp-templates")
     monkeypatch.setenv("KALPZERO_GITHUB_TEMPLATE_REPO", "business-site-template")
     monkeypatch.setenv("KALPZERO_GITHUB_REPO_PREFIX", "kalp-biz")
+    monkeypatch.setenv("KALPZERO_WEBSITE_PROVIDER", "github_vercel")
     monkeypatch.setenv("KALPZERO_VERCEL_TOKEN", "vercel_test_token")
     monkeypatch.setenv("KALPZERO_VERCEL_PROJECT_PREFIX", "kalp-biz")
 
@@ -332,6 +333,25 @@ def test_platform_admin_can_provision_business_website_repo_with_self_hosted_run
         "_sync_local_repository_checkout",
         lambda settings, *, repo_name: f"/tmp/kalp-sites/{repo_name}",
     )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_resolve_server_public_ips",
+        lambda settings: {"103.80.161.222"},
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_lookup_host_ips",
+        lambda host: {"103.80.161.222"} if host == "hotel-demo.example.com" else set(),
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_run_domain_provisioner",
+        lambda settings, *, host, email: {
+            "host": host,
+            "config_path": f"/etc/nginx/sites-available/{host}.conf",
+            "certificate_path": f"/etc/letsencrypt/live/{host}/fullchain.pem",
+        },
+    )
 
     platform_token = login(client, email="founder@kalpzero.com")
     agency_response = client.post(
@@ -367,27 +387,250 @@ def test_platform_admin_can_provision_business_website_repo_with_self_hosted_run
     assert website_deployment["status"] == "ready"
     assert website_deployment["repo_url"] == "https://github.com/kalp-sites/kalp-biz-self-hosted-tenant"
     assert website_deployment["repo_name"] == "kalp-biz-self-hosted-tenant"
-    assert website_deployment["production_url"] == "https://kalptree.xyz/self-hosted-tenant"
-    assert website_deployment["deployment_url"] == "https://kalptree.xyz/self-hosted-tenant"
+    assert website_deployment["production_url"] == "https://hotel-demo.example.com"
+    assert website_deployment["deployment_url"] == "https://hotel-demo.example.com"
     assert website_deployment["local_repo_path"] == "/tmp/kalp-sites/kalp-biz-self-hosted-tenant"
     assert website_deployment["platform_host"] == "self-hosted-tenant.kalptree.xyz"
     assert website_deployment["platform_url"] == "https://self-hosted-tenant.kalptree.xyz"
-    assert website_deployment["domains"] == [
-        {
-            "id": website_deployment["domains"][0]["id"],
-            "host": "hotel-demo.example.com",
-            "domain_kind": "custom",
-            "ssl_status": "pending_dns",
-            "is_primary": True,
-            "active": True,
-            "metadata": {"tenant_slug": "self-hosted-tenant"},
-            "created_at": website_deployment["domains"][0]["created_at"],
-            "updated_at": website_deployment["domains"][0]["updated_at"],
-        }
-    ]
-    assert website_deployment["message"] == (
-        "Business website repo created, synced to the server, and wired to the self-hosted Kalp runtime."
+    assert len(website_deployment["domains"]) == 2
+    primary_domain = website_deployment["domains"][0]
+    platform_domain = website_deployment["domains"][1]
+    assert primary_domain["host"] == "hotel-demo.example.com"
+    assert primary_domain["domain_kind"] == "custom"
+    assert primary_domain["ssl_status"] == "ready"
+    assert primary_domain["is_primary"] is True
+    assert primary_domain["active"] is True
+    assert primary_domain["metadata"]["tenant_slug"] == "self-hosted-tenant"
+    assert primary_domain["metadata"]["expected_server_ips"] == ["103.80.161.222"]
+    assert primary_domain["metadata"]["observed_ips"] == ["103.80.161.222"]
+    assert primary_domain["metadata"]["message"] == "HTTPS is live for this domain."
+    assert primary_domain["metadata"]["https_url"] == "https://hotel-demo.example.com"
+    assert primary_domain["metadata"]["provisioner"] == {
+        "host": "hotel-demo.example.com",
+        "config_path": "/etc/nginx/sites-available/hotel-demo.example.com.conf",
+        "certificate_path": "/etc/letsencrypt/live/hotel-demo.example.com/fullchain.pem",
+    }
+    assert "last_error" not in primary_domain["metadata"]
+    assert primary_domain["metadata"]["last_checked_at"]
+    assert primary_domain["metadata"]["activated_at"]
+
+    assert platform_domain["host"] == "self-hosted-tenant.kalptree.xyz"
+    assert platform_domain["domain_kind"] == "platform_subdomain"
+    assert platform_domain["ssl_status"] == "pending_dns"
+    assert platform_domain["is_primary"] is False
+    assert platform_domain["active"] is True
+    assert platform_domain["metadata"]["tenant_slug"] == "self-hosted-tenant"
+    assert platform_domain["metadata"]["expected_server_ips"] == ["103.80.161.222"]
+    assert platform_domain["metadata"]["observed_ips"] == []
+    assert platform_domain["metadata"]["message"] == (
+        "DNS is not pointing self-hosted-tenant.kalptree.xyz to 103.80.161.222 yet. "
+        "Add a wildcard or an A record for this subdomain, then run domain sync again."
     )
+    assert "last_error" not in platform_domain["metadata"]
+    assert platform_domain["metadata"]["last_checked_at"]
+    assert (
+        website_deployment["message"]
+        == "Business website repo created and synced to the server. 1 domain is live: hotel-demo.example.com. 1 domain is waiting for DNS: self-hosted-tenant.kalptree.xyz."
+    )
+
+
+def test_platform_admin_can_sync_self_hosted_domains_after_dns_is_ready(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("KALPZERO_GITHUB_TOKEN", "ghs_test_token")
+    monkeypatch.setenv("KALPZERO_GITHUB_REPO_OWNER", "kalp-sites")
+    monkeypatch.setenv("KALPZERO_GITHUB_TEMPLATE_OWNER", "kalp-templates")
+    monkeypatch.setenv("KALPZERO_GITHUB_TEMPLATE_REPO", "business-site-template")
+    monkeypatch.setenv("KALPZERO_GITHUB_REPO_PREFIX", "kalp-biz")
+    monkeypatch.setenv("KALPZERO_WEBSITE_PROVIDER", "github_self_hosted")
+    monkeypatch.setenv("KALPZERO_PUBLIC_WEB_URL", "https://kalptree.xyz")
+    monkeypatch.setenv("KALPZERO_WEBSITE_ROOT_DOMAIN", "kalptree.xyz")
+    monkeypatch.setenv("KALPZERO_WEBSITE_PUBLIC_URL_MODE", "path")
+
+    from app.core.config import get_settings
+    from app.services import website_provisioning
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        website_provisioning,
+        "_request_json",
+        lambda method, url, *, headers, payload=None: {
+            "id": 303,
+            "name": "kalp-biz-sync-tenant",
+            "full_name": "kalp-sites/kalp-biz-sync-tenant",
+            "html_url": "https://github.com/kalp-sites/kalp-biz-sync-tenant",
+            "default_branch": "main",
+        },
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_sync_local_repository_checkout",
+        lambda settings, *, repo_name: f"/tmp/kalp-sites/{repo_name}",
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_resolve_server_public_ips",
+        lambda settings: {"103.80.161.222"},
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_lookup_host_ips",
+        lambda host: set(),
+    )
+
+    platform_token = login(client, email="founder@kalpzero.com")
+    agency_response = client.post(
+        "/platform/agencies",
+        headers={"Authorization": f"Bearer {platform_token}"},
+        json={
+            "slug": "sync-agency",
+            "name": "Sync Agency",
+            "region": "in",
+            "owner_user_id": "founder@kalpzero.com",
+        },
+    )
+    assert agency_response.status_code == 201
+
+    tenant_response = client.post(
+        "/platform/tenants",
+        headers={"Authorization": f"Bearer {platform_token}"},
+        json={
+            "agency_slug": "sync-agency",
+            "slug": "sync-tenant",
+            "display_name": "Sync Tenant",
+            "infra_mode": "shared",
+            "vertical_pack": "hotel",
+            "admin_email": "owner@tenant.com",
+            "primary_domains": ["sync-demo.example.com"],
+            "feature_flags": ["seo-suite", "custom-domain"],
+        },
+    )
+    assert tenant_response.status_code == 201
+    assert tenant_response.json()["website_deployment"]["production_url"] == "https://kalptree.xyz/sync-tenant"
+    assert all(
+        domain["ssl_status"] == "pending_dns"
+        for domain in tenant_response.json()["website_deployment"]["domains"]
+    )
+
+    monkeypatch.setattr(
+        website_provisioning,
+        "_lookup_host_ips",
+        lambda host: {"103.80.161.222"},
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_run_domain_provisioner",
+        lambda settings, *, host, email: {
+            "host": host,
+            "config_path": f"/etc/nginx/sites-available/{host}.conf",
+            "certificate_path": f"/etc/letsencrypt/live/{host}/fullchain.pem",
+        },
+    )
+
+    sync_response = client.post(
+        "/platform/tenants/sync-tenant/website/sync",
+        headers={"Authorization": f"Bearer {platform_token}"},
+    )
+    assert sync_response.status_code == 200
+    payload = sync_response.json()["website_deployment"]
+    assert payload["production_url"] == "https://sync-demo.example.com"
+    assert payload["deployment_url"] == "https://sync-demo.example.com"
+    assert payload["domains"][0]["host"] == "sync-demo.example.com"
+    assert payload["domains"][0]["ssl_status"] == "ready"
+    assert payload["domains"][1]["host"] == "sync-tenant.kalptree.xyz"
+    assert payload["domains"][1]["ssl_status"] == "ready"
+
+
+def test_public_host_resolution_returns_tenant_slug_for_self_hosted_domains(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("KALPZERO_GITHUB_TOKEN", "ghs_test_token")
+    monkeypatch.setenv("KALPZERO_GITHUB_REPO_OWNER", "kalp-sites")
+    monkeypatch.setenv("KALPZERO_GITHUB_TEMPLATE_OWNER", "kalp-templates")
+    monkeypatch.setenv("KALPZERO_GITHUB_TEMPLATE_REPO", "business-site-template")
+    monkeypatch.setenv("KALPZERO_WEBSITE_PROVIDER", "github_self_hosted")
+    monkeypatch.setenv("KALPZERO_PUBLIC_WEB_URL", "https://kalptree.xyz")
+    monkeypatch.setenv("KALPZERO_WEBSITE_ROOT_DOMAIN", "kalptree.xyz")
+
+    from app.core.config import get_settings
+    from app.services import website_provisioning
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(
+        website_provisioning,
+        "_request_json",
+        lambda method, url, *, headers, payload=None: {
+            "id": 404,
+            "name": "kalp-biz-host-tenant",
+            "full_name": "kalp-sites/kalp-biz-host-tenant",
+            "html_url": "https://github.com/kalp-sites/kalp-biz-host-tenant",
+            "default_branch": "main",
+        },
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_sync_local_repository_checkout",
+        lambda settings, *, repo_name: f"/tmp/kalp-sites/{repo_name}",
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_resolve_server_public_ips",
+        lambda settings: {"103.80.161.222"},
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_lookup_host_ips",
+        lambda host: {"103.80.161.222"} if host == "mapped.example.com" else set(),
+    )
+    monkeypatch.setattr(
+        website_provisioning,
+        "_run_domain_provisioner",
+        lambda settings, *, host, email: {"host": host},
+    )
+
+    platform_token = login(client, email="founder@kalpzero.com")
+    agency_response = client.post(
+        "/platform/agencies",
+        headers={"Authorization": f"Bearer {platform_token}"},
+        json={
+            "slug": "host-agency",
+            "name": "Host Agency",
+            "region": "in",
+            "owner_user_id": "founder@kalpzero.com",
+        },
+    )
+    assert agency_response.status_code == 201
+
+    tenant_response = client.post(
+        "/platform/tenants",
+        headers={"Authorization": f"Bearer {platform_token}"},
+        json={
+            "agency_slug": "host-agency",
+            "slug": "host-tenant",
+            "display_name": "Host Tenant",
+            "infra_mode": "shared",
+            "vertical_pack": "hotel",
+            "admin_email": "owner@tenant.com",
+            "primary_domains": ["mapped.example.com"],
+            "feature_flags": ["seo-suite", "custom-domain"],
+        },
+    )
+    assert tenant_response.status_code == 201
+
+    custom_host_response = client.get("/publishing/public/resolve-host", params={"host": "mapped.example.com"})
+    assert custom_host_response.status_code == 200
+    assert custom_host_response.json()["tenant_slug"] == "host-tenant"
+    assert custom_host_response.json()["domain_kind"] == "custom"
+
+    platform_host_response = client.get(
+        "/publishing/public/resolve-host",
+        params={"host": "host-tenant.kalptree.xyz"},
+    )
+    assert platform_host_response.status_code == 200
+    assert platform_host_response.json()["tenant_slug"] == "host-tenant"
+    assert platform_host_response.json()["domain_kind"] == "platform_subdomain"
 
 
 def test_platform_admin_can_filter_audit_and_outbox_by_tenant_scope(client: TestClient) -> None:

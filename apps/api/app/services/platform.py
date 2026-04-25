@@ -1,13 +1,14 @@
 from urllib.parse import urlparse
+
 from sqlalchemy.orm import Session
-from app.core.config import Settings
+
 from app.db.mongo import (
+    RuntimeDocumentStore,
     build_runtime_database_name,
     describe_tenant_runtime_document_store,
     get_runtime_document_store,
     get_runtime_mongo_database,
     provision_runtime_document_store_for_tenant,
-    RuntimeDocumentStore,
 )
 from app.core.config import Settings, get_settings
 from app.repositories import platform as platform_repository
@@ -15,7 +16,9 @@ from app.services.errors import ConflictError, NotFoundError, ValidationError
 from app.services.website_provisioning import (
     get_missing_website_automation_settings,
     provision_business_website,
+    resolve_public_website_host,
     serialize_website_deployment,
+    sync_self_hosted_website_domains,
 )
 from app.utlis.utlis import serialize_mongo
 from pymongo import ReturnDocument
@@ -260,11 +263,16 @@ def get_onboarding_readiness(
         warnings.append(detail)
         checks.append({"key": "website_automation", "status": "warn", "detail": detail})
     else:
+        automation_detail = (
+            "GitHub template repo automation and self-hosted website deployment are configured."
+            if settings.website_provider == "github_self_hosted"
+            else "GitHub template repo automation and Vercel deployment automation are configured."
+        )
         checks.append(
             {
                 "key": "website_automation",
                 "status": "pass",
-                "detail": "GitHub template repo automation and Vercel deployment automation are configured.",
+                "detail": automation_detail,
             }
         )
 
@@ -517,6 +525,35 @@ def get_registry_snapshot(db: Session, *, tenant_slug: str) -> dict[str, object]
 def get_current_tenant_summary(db: Session, settings: Settings, *, tenant_slug: str) -> dict[str, object]:
     tenant = get_tenant_or_raise(db, tenant_slug=tenant_slug)
     return _serialize_tenant_with_details(db, settings, tenant)
+
+
+def sync_tenant_website_domains(
+    db: Session,
+    settings: Settings,
+    *,
+    actor_user_id: str,
+    tenant_slug: str,
+) -> dict[str, object]:
+    tenant = get_tenant_or_raise(db, tenant_slug=tenant_slug)
+    deployment = platform_repository.get_tenant_website_deployment(db, tenant_id=str(tenant.id))
+    provider = (deployment.provider if deployment is not None else settings.website_provider).strip().lower()
+    if provider != "github_self_hosted":
+        raise ValidationError("Website domain sync is available only for the self-hosted website provider.")
+
+    sync_self_hosted_website_domains(
+        db,
+        settings,
+        tenant=tenant,
+        actor_user_id=actor_user_id,
+    )
+    return _serialize_tenant_with_details(db, settings, tenant)
+
+
+def resolve_public_tenant_by_host(db: Session, settings: Settings, *, host: str) -> dict[str, object]:
+    resolved = resolve_public_website_host(db, settings, host=host)
+    if resolved is None:
+        raise NotFoundError(f"Host '{host}' is not mapped to a public tenant.")
+    return resolved
 
 
 def list_audit_events_for_scope(db: Session, *, tenant_slug: str) -> list[dict[str, object]]:
