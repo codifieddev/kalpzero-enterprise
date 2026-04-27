@@ -9,7 +9,7 @@ import { fetchTenantById } from "@/hook/slices/kalp_master/master_tenant/TenantT
 
 const GetTenant = () => {
     const { authUser } = useSelector((state: RootState) => state.auth)
-    console.log("authUser---->", authUser)
+
     const dispatch = useDispatch<AppDispatch>()
     const isApi = useRef<boolean>(false)
     const router = useRouter();
@@ -21,8 +21,7 @@ const GetTenant = () => {
                     fetchTenantById({ id: authUser.id, auth_token: authUser.access_token })
                 );
 
-                console.log("current tetnat", response)
-                // Optionally handle the response or router.push
+            
             }
         };
 
